@@ -29,7 +29,7 @@ export default function TelaConfiguracoes() {
                     text: 'Sair', 
                     style: 'destructive',
                     onPress: async () => {
-                        parar(); // Para o áudio antes de deslogar
+                        parar();
                         await sair();
                         router.replace('/(Autenticacao)/entrar');
                     }

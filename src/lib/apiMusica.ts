@@ -117,7 +117,7 @@ export async function pesquisarMusicas(
 
     // A API retorna um array direto conforme o schema OpenAPI
     if (Array.isArray(dados)) {
-        return dados as Musica[];
+        return (dados as Musica[]);
     }
 
     return [];
@@ -164,7 +164,7 @@ export async function pesquisarMusicasPorArtista(
     }
 
     if (Array.isArray(dados)) {
-        return dados as Musica[];
+        return (dados as Musica[]);
     }
 
     return [];
@@ -214,7 +214,7 @@ export async function pesquisarAlbums(
     }
 
     if (Array.isArray(dados)) {
-        return dados as Album[];
+        return (dados as Album[]);
     }
 
     return [];

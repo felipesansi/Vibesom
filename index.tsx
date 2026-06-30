@@ -9,9 +9,9 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import Tema from '../../../../constantes/Cores';
-import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
-import { usePlayer } from '../../../contexto/ContextoPlayer';
+import Tema from './constantes/Cores';
+import { useAutenticacao } from './src/contexto/ContextoAutenticacao';
+import { usePlayer } from './src/contexto/ContextoPlayer';
 
 export default function TelaConfiguracoes() {
     const { usuario, sair } = useAutenticacao();
@@ -27,7 +27,7 @@ export default function TelaConfiguracoes() {
                     text: 'Sair', 
                     style: 'destructive',
                     onPress: async () => {
-                        parar(); // Para o player antes de sair
+                        parar();
                         await sair();
                     }
                 },

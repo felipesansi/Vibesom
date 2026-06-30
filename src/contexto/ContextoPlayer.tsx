@@ -6,10 +6,8 @@ import React, {
     useState
 } from 'react';
 import { Musica, urlStreamCompleta } from '../lib/apiMusica';
+import { obterAudioYoutube } from '../lib/youtube';
 
-// ============================================================================
-// Tipos
-// ============================================================================
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
 
@@ -32,9 +30,6 @@ type ContextoPlayerValor = {
     alternarAleatorio: () => void;
 };
 
-// ============================================================================
-// Contexto
-// ============================================================================
 
 const ContextoPlayer = createContext<ContextoPlayerValor | null>(null);
 
@@ -48,7 +43,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const [aleatorio, setAleatorio] = useState(false);
 
     const player = useAudioPlayer(null);
-    const status = useAudioPlayerStatus(player); // Intervalo de 100ms para maior precisão no progresso
+    const status = useAudioPlayerStatus(player);
 
     // Sincroniza estado com status do player
     React.useEffect(() => {
@@ -71,7 +66,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         try {
             setEstado('carregando');
             setErroMsg(null);
-            
+
             const listaReferencia = novaLista || lista;
             if (novaLista) setLista(novaLista);
 
@@ -79,7 +74,21 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setIndiceAtual(index);
             setFaixaAtual(musica);
 
-            const url = urlStreamCompleta(musica.streamUrl);
+            let url = urlStreamCompleta(musica.streamUrl);
+
+            // Para o YouTube, a própria API já expõe /stream/{id} como proxy.
+            // Só chamamos o Piped como último recurso se a streamUrl não for do nosso servidor.
+            if (musica.source.toLowerCase() === 'youtube' && !musica.streamUrl.startsWith('/stream/')) {
+                const streamYoutube = await obterAudioYoutube(musica.id);
+                if (streamYoutube) {
+                    url = streamYoutube;
+                } else {
+                    setErroMsg('Não foi possível obter o áudio do YouTube. Tente outra música.');
+                    setEstado('erro');
+                    return;
+                }
+            }
+
             player.replace(url);
             player.play();
         } catch (e) {
@@ -123,17 +132,11 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         player.loop = repetir;
     }, [player, repetir]);
 
-    // Efeito para tocar a próxima faixa automaticamente
-    // Monitoramos a mudança de status: se a música parou de tocar e está no fim, avançamos.
     React.useEffect(() => {
-        if (status.isLoaded && !status.playing && !repetir && faixaAtual) {
-            // Verifica se a posição atual está no fim (margem de 1.5s para evitar cortes)
-            const atingiuFim = (status.duration ?? 0) > 0 && (status.currentTime ?? 0) >= ((status.duration ?? 0) - 1.5);
-            if (atingiuFim && status.duration > 0) {
-                proxima();
-            }
+        if (status.isLoaded && status.didJustFinish && !player.loop) {
+            proxima();
         }
-    }, [status.playing, status.isLoaded, status.currentTime, status.duration, repetir, proxima, faixaAtual]);
+    }, [status.isLoaded, status.didJustFinish, player.loop, proxima]);
 
     const pausar = useCallback(() => {
         player.pause();
@@ -153,18 +156,18 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     return (
         <ContextoPlayer.Provider
-            value={{ 
-                faixaAtual, 
+            value={{
+                faixaAtual,
                 lista,
-                estado, 
-                erro: erroMsg, 
-                posicao, 
-                duracao, 
+                estado,
+                erro: erroMsg,
+                posicao,
+                duracao,
                 repetir,
                 aleatorio,
-                tocar, 
-                pausar, 
-                retomar, 
+                tocar,
+                pausar,
+                retomar,
                 parar,
                 proxima,
                 anterior,
@@ -177,9 +180,6 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     );
 }
 
-// ============================================================================
-// Hook
-// ============================================================================
 
 export function usePlayer(): ContextoPlayerValor {
     const ctx = useContext(ContextoPlayer);

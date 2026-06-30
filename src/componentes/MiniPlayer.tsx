@@ -11,8 +11,7 @@ export function MiniPlayer() {
     const segmentos = useSegments();
     const ultimoClique = React.useRef(0);
 
-    // Esconde o miniplayer se não houver música ou se já estiver na tela do player completo (biblioteca)
-    if (!faixaAtual || segmentos?.includes('biblioteca')) return null;
+    if (!faixaAtual || (segmentos as string[])?.includes('biblioteca')) return null;
 
     const tocando = estado === 'tocando';
 
@@ -27,7 +26,6 @@ export function MiniPlayer() {
     const aoClicar = () => {
         const agora = Date.now();
         if (agora - ultimoClique.current < 400) {
-            // Clique duplo detectado
             router.push('/(Aplicativo)/biblioteca' as any);
             ultimoClique.current = 0;
         } else {
@@ -82,9 +80,6 @@ const estilos = StyleSheet.create({
         padding: 10,
         borderRadius: 16,
         marginHorizontal: 16,
-        // Remover bottom margin aqui, vai ser gerenciado por quem renderiza
-        
-        // Sombras
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,

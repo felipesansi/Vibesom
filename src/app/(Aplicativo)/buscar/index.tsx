@@ -6,14 +6,11 @@ import {
     ActivityIndicator, FlatList, Image, ScrollView,
     StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context'; // Importação duplicada, pode ser removida se já estiver em outro lugar
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import { Album, Musica, formatarDuracao, pesquisarAlbums, pesquisarMusicas } from '../../../lib/apiMusica';
 
-// ============================================================================
-// Categorias
-// ============================================================================
 
 type Categoria = {
     id: string;
@@ -32,9 +29,9 @@ const CATEGORIAS: Categoria[] = [
     { id: '7', rotulo: 'SoundCloud', cor: '#FF5500', icone: 'logo-soundcloud' },
 ];
 
-// Cores por plataforma
 const CORES_PLATAFORMA: Record<string, string> = {
     soundcloud: '#FF5500',
+    youtube: '#FF0000',
     audius: '#CC0000',
     jamendo: '#00A6A6',
     archive: '#7B4F9E',
@@ -43,6 +40,7 @@ const CORES_PLATAFORMA: Record<string, string> = {
     bandcamp: '#1DA0C3',
     dailymotion: '#0066DC',
     palco: '#009688',
+    palcomp3: '#009688',
     saavn: '#2BC5B4',
 };
 
@@ -68,7 +66,6 @@ export default function TelaBuscar() {
 
     const { faixaAtual, estado, posicao, duracao, tocar, pausar, retomar } = usePlayer();
 
-    // Foca o input ao tocar na aba Buscar se já estiver nela
     useEffect(() => {
         const unsubscribe = navigation.addListener('tabPress', () => {
             if (navigation.isFocused()) {
@@ -79,13 +76,11 @@ export default function TelaBuscar() {
         return unsubscribe;
     }, [navigation]);
 
-    // Debounce da busca
     useEffect(() => {
         const timer = setTimeout(() => setTermoBusca(consulta.trim()), ATRASO_BUSCA_MS);
         return () => clearTimeout(timer);
     }, [consulta]);
 
-    // Executa a busca
     useEffect(() => {
         if (!termoBusca) {
             setResultados([]);
@@ -126,7 +121,6 @@ export default function TelaBuscar() {
         setTermoBusca(rotulo);
     }, []);
 
-    // Toca ou pausa a faixa
     const aoTocar = useCallback(async (item: Musica) => {
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         if (ehAtual) {
@@ -137,9 +131,6 @@ export default function TelaBuscar() {
         }
     }, [faixaAtual, estado, tocar, pausar, retomar, resultados]);
 
-    // ——————————————————————————————
-    // Item da lista
-    // ——————————————————————————————
     const renderItem = useCallback(({ item }: { item: Musica }) => {
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         const tocandoEsta = ehAtual && estado === 'tocando';
@@ -174,6 +165,9 @@ export default function TelaBuscar() {
                             {item.source.toLowerCase() === 'soundcloud' && (
                                 <Ionicons name="logo-soundcloud" size={12} color={corDaPlataforma(item.source)} style={{ marginRight: 4 }} />
                             )}
+                            {item.source.toLowerCase() === 'youtube' && (
+                                <Ionicons name="logo-youtube" size={12} color={corDaPlataforma(item.source)} style={{ marginRight: 4 }} />
+                            )}
                             <Text style={[
                                 estilos.textoBadge,
                                 { color: corDaPlataforma(item.source) }
@@ -204,9 +198,6 @@ export default function TelaBuscar() {
         );
     }, [faixaAtual, estado, aoTocar]);
 
-    // ——————————————————————————————
-    // Cabeçalho da lista
-    // ——————————————————————————————
     const cabecalho = (
         <View style={estilos.cabecalho}>
             <Text style={estilos.titulo}>Buscar</Text>
@@ -348,9 +339,6 @@ export default function TelaBuscar() {
     );
 }
 
-// ============================================================================
-// Estilos
-// ============================================================================
 
 const estilos = StyleSheet.create({
     container: {
@@ -496,7 +484,6 @@ const estilos = StyleSheet.create({
         color: Tema.erro,
         fontSize: 14,
     },
-    // Item da lista
     linhaMusica: {
         flexDirection: 'row',
         alignItems: 'center',

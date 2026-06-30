@@ -137,7 +137,7 @@ const estilos = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: Tema.fundo,
-        paddingTop: Platform.OS === 'android' ? 25 : 0, // Ajuste para a barra de status do Android
+        paddingTop: Platform.OS === 'android' ? 25 : 0,
     },
     containerVazio: {
         justifyContent: 'center',
@@ -154,7 +154,7 @@ const estilos = StyleSheet.create({
     },
     botaoVoltar: {
         position: 'absolute',
-        top: Platform.OS === 'android' ? 35 : 15, // Ajuste para a barra de status do Android
+        top: Platform.OS === 'android' ? 35 : 15,
         left: 15,
         zIndex: 1,
         padding: 5,
