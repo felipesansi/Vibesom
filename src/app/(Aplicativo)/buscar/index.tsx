@@ -5,11 +5,18 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, FlatList, Image, ScrollView,
     StyleSheet, Text, TextInput, TouchableOpacity, View,
+    useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
-import { Album, Musica, formatarDuracao, pesquisarAlbums, pesquisarMusicas } from '../../../lib/apiMusica';
+import {
+    Artista,
+    Musica,
+    ResultadoPesquisa,
+    formatarDuracao,
+    pesquisar
+} from '../../../lib/apiMusica';
 
 
 type Categoria = {
@@ -53,18 +60,20 @@ const ATRASO_BUSCA_MS = 400;
 export default function TelaBuscar() {
     const [consulta, setConsulta] = useState('');
     const [termoBusca, setTermoBusca] = useState('');
-    const [resultados, setResultados] = useState<Musica[]>([]);
-    const [albums, setAlbums] = useState<Album[]>([]);
+    const [resultados, setResultados] = useState<ResultadoPesquisa>({ artistas: [], musicas: [], playlists: [] });
+    const [melhorArtista, setMelhorArtista] = useState<Artista | null>(null);
     const [carregando, setCarregando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
-    const [filtroAtivo, setFiltroAtivo] = useState<'tudo' | 'musicas' | 'albuns'>('tudo');
+    const [filtroAtivo, setFiltroAtivo] = useState<'tudo' | 'musicas' | 'playlists' | 'artistas'>('tudo');
     const router = useRouter(); 
     const navigation = useNavigation<BottomTabNavigationProp<any>>();
+    const { width } = useWindowDimensions();
+    const isTablet = width > 768;
   
     const inputRef = useRef<TextInput>(null);
     const flatListRef = useRef<FlatList>(null);
 
-    const { faixaAtual, estado, posicao, duracao, tocar, pausar, retomar } = usePlayer();
+    const { faixaAtual, estado, tocar, pausar, retomar } = usePlayer();
 
     useEffect(() => {
         const unsubscribe = navigation.addListener('tabPress', () => {
@@ -83,7 +92,7 @@ export default function TelaBuscar() {
 
     useEffect(() => {
         if (!termoBusca) {
-            setResultados([]);
+            setResultados({ artistas: [], musicas: [], playlists: [] });
             setErro(null);
             return;
         }
@@ -94,29 +103,23 @@ export default function TelaBuscar() {
             setErro(null);
             setCarregando(true);
             try {
-                const [musicas, resAlbums] = await Promise.all([
-                    pesquisarMusicas(termoBusca, controlador.signal),
-                    pesquisarAlbums(termoBusca, controlador.signal)
-                ]);
-
-                setResultados(musicas);
-                setAlbums(resAlbums);
+                const res = await pesquisar(termoBusca, controlador.signal);
+                setResultados(res);
+                setMelhorArtista(res.artistas.length > 0 ? res.artistas[0] : null);
             } catch (e) {
                 if (e instanceof Error && e.name !== 'AbortError') {
-                    setResultados([]);
-                    setAlbums([]);
+                    setResultados({ artistas: [], musicas: [], playlists: [] });
                     setErro(e.message || 'Falha ao buscar músicas.');
                 }
             } finally {
                 setCarregando(false);
             }
         })();
-
+        
         return () => controlador.abort();
     }, [termoBusca]);
 
     const buscarPorCategoria = useCallback((rotulo: string) => {
-        setResultados([]);
         setConsulta(rotulo);
         setTermoBusca(rotulo);
     }, []);
@@ -127,9 +130,9 @@ export default function TelaBuscar() {
             if (estado === 'tocando') pausar();
             else retomar();
         } else {
-            await tocar(item, resultados);
+            await tocar(item, resultados.musicas);
         }
-    }, [faixaAtual, estado, tocar, pausar, retomar, resultados]);
+    }, [faixaAtual, estado, tocar, pausar, retomar, resultados.musicas]);
 
     const renderItem = useCallback(({ item }: { item: Musica }) => {
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
@@ -198,6 +201,38 @@ export default function TelaBuscar() {
         );
     }, [faixaAtual, estado, aoTocar]);
 
+    const renderCardArtista = () => {
+        if (!melhorArtista) return null;
+        
+        return (
+            <TouchableOpacity 
+                style={estilos.cardMelhorResultado}
+                activeOpacity={0.8}
+                onPress={() => {
+                    router.push(`/artista/${melhorArtista.nome}`);
+                }}
+            >
+                {melhorArtista.capa ? (
+                    <Image source={{ uri: melhorArtista.capa }} style={estilos.fotoArtistaMaior} />
+                ) : (
+                    <View style={[estilos.fotoArtistaMaior, estilos.capaPlaceholder]}>
+                        <Ionicons name="person" size={48} color={Tema.textoSuave} />
+                    </View>
+                )}
+                <Text style={estilos.nomeMelhorResultado} numberOfLines={2}>
+                    {melhorArtista.nome}
+                </Text>
+                <View style={estilos.badgeArtista}>
+                    <Text style={estilos.textoBadgeArtista}>Artista</Text>
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
+    const dadosLista = termoBusca && !carregando && !erro 
+        ? (filtroAtivo === 'tudo' ? resultados.musicas.slice(0, 4) : (filtroAtivo === 'musicas' ? resultados.musicas : []))
+        : [];    
+
     const cabecalho = (
         <View style={estilos.cabecalho}>
             <Text style={estilos.titulo}>Buscar</Text>
@@ -216,7 +251,7 @@ export default function TelaBuscar() {
                     returnKeyType="search"
                     onSubmitEditing={() => {
                         const termo = consulta.trim();
-                        if (termo) setResultados([]);
+                        if (termo) setResultados({ artistas: [], musicas: [], playlists: [] });
                         setTermoBusca(termo);
                     }}
                 />
@@ -240,11 +275,14 @@ export default function TelaBuscar() {
                     <TouchableOpacity onPress={() => setFiltroAtivo('musicas')} style={[estilos.filtroBadge, filtroAtivo === 'musicas' && estilos.filtroAtivo]}>
                         <Text style={[estilos.textoFiltro, filtroAtivo === 'musicas' && estilos.textoFiltroAtivo]}>Músicas</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setFiltroAtivo('albuns')} style={[estilos.filtroBadge, filtroAtivo === 'albuns' && estilos.filtroAtivo]}>
-                        <Text style={[estilos.textoFiltro, filtroAtivo === 'albuns' && estilos.textoFiltroAtivo]}>Álbuns</Text>
+                    <TouchableOpacity onPress={() => setFiltroAtivo('playlists')} style={[estilos.filtroBadge, filtroAtivo === 'playlists' && estilos.filtroAtivo]}>
+                        <Text style={[estilos.textoFiltro, filtroAtivo === 'playlists' && estilos.textoFiltroAtivo]}>Playlists</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setFiltroAtivo('artistas')} style={[estilos.filtroBadge, filtroAtivo === 'artistas' && estilos.filtroAtivo]}>
+                        <Text style={[estilos.textoFiltro, filtroAtivo === 'artistas' && estilos.textoFiltroAtivo]}>Artistas</Text>
                     </TouchableOpacity>
                 </View>
-            ) : null}
+            ) : null }
 
             {!termoBusca ? (
                 <>
@@ -277,42 +315,64 @@ export default function TelaBuscar() {
                         </View>
                     ) : erro ? (
                         <Text style={estilos.textoErro}>{erro}</Text>
-                    ) : resultados.length > 0 || albums.length > 0 ? (
-                        <View>
-                            {filtroAtivo !== 'musicas' && albums.length > 0 && (
-                                <View style={estilos.secaoResultados}>
-                                    <Text style={estilos.secao}>Álbuns</Text>
-                                    <ScrollView
-                                        horizontal
-                                        showsHorizontalScrollIndicator={false}
-                                        contentContainerStyle={estilos.listaHorizontal}
-                                    >
-                                        {albums.map((album) => (
-                                            <TouchableOpacity 
-                                                key={`${album.source}-${album.id}`} 
-                                                style={estilos.cartaoAlbum}
-                                                onPress={() => setConsulta(album.titulo)}
-                                            >
-                                                {album.capa ? (
-                                                    <Image source={{ uri: album.capa }} style={estilos.capaAlbum} />
-                                                ) : (
-                                                    <View style={[estilos.capaAlbum, estilos.capaAlbumPlaceholder]}>
-                                                        <Ionicons name="albums" size={40} color={Tema.textoSuave} />
-                                                    </View>
-                                                )}
-                                                <Text style={estilos.tituloAlbum} numberOfLines={1}>{album.titulo}</Text>
-                                                <Text style={estilos.artistaAlbum} numberOfLines={1}>{album.artista}</Text>
-                                            </TouchableOpacity>
-                                        ))}
-                                    </ScrollView>
+                    ) : resultados.musicas.length > 0 || resultados.playlists.length > 0 || resultados.artistas.length > 0 ? (
+                        <View style={isTablet && filtroAtivo === 'tudo' ? estilos.gridSuperior : null}>
+                            {/* Sessão Melhor Resultado */}
+                            {filtroAtivo === 'tudo' && melhorArtista && (
+                                <View style={isTablet ? estilos.colunaEsquerda : { marginBottom: 24 }}>
+                                    <Text style={estilos.secao}>Melhor resultado</Text>
+                                    {renderCardArtista()}
                                 </View>
                             )}
-                            
-                            {filtroAtivo !== 'albuns' && resultados.length > 0 && (
-                                <Text style={[estilos.secao, { marginTop: 10 }]}>Músicas</Text>
+
+                            {/* Sessão Músicas Header */}
+                            {((filtroAtivo === 'tudo' && resultados.musicas.length > 0) || (filtroAtivo === 'musicas')) && (
+                                <View style={isTablet && filtroAtivo === 'tudo' ? estilos.colunaDireita : null}>
+                                    <Text style={[estilos.secao, { marginBottom: 8 }]}>Músicas</Text>
+                                    {/* Músicas vão ser renderizadas no FlatList principal para ter rolagem eficiente, exceto se estivermos na view de tablet (lá faríamos no ListHeaderComponent, mas para manter a estrutura, deixaremos o ListHeaderComponent cuidar do título e a FlatList do conteúdo) */}
+                                </View>
                             )}
                         </View>
                     ) : null}
+                </View>
+            )}
+        </View>
+    );
+
+    const rodape = (
+        <View style={estilos.rodapeLista}>
+            {termoBusca && !carregando && filtroAtivo === 'tudo' && resultados.musicas.length > 4 && (
+                <TouchableOpacity style={estilos.botaoVerMais} onPress={() => setFiltroAtivo('musicas')}>
+                    <Text style={estilos.textoBotaoVerMais}>Ver todas as músicas</Text>
+                </TouchableOpacity>
+            )}
+
+            {termoBusca && !carregando && !erro && (filtroAtivo === 'tudo' || filtroAtivo === 'playlists') && resultados.playlists.length > 0 && (
+                <View style={estilos.secaoResultados}>
+                    <Text style={estilos.secao}>Playlists e Álbuns</Text>
+                    <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        contentContainerStyle={estilos.listaHorizontal}
+                    >
+                        {resultados.playlists.map((playlist) => (
+                            <TouchableOpacity 
+                                key={`${playlist.source}-${playlist.id}`} 
+                                style={estilos.cartaoAlbum}
+                                onPress={() => setConsulta(playlist.titulo)}
+                            >
+                                {playlist.capa ? (
+                                    <Image source={{ uri: playlist.capa }} style={estilos.capaAlbum} />
+                                ) : (
+                                    <View style={[estilos.capaAlbum, estilos.capaAlbumPlaceholder]}>
+                                        <Ionicons name="albums" size={40} color={Tema.textoSuave} />
+                                    </View>
+                                )}
+                                <Text style={estilos.tituloAlbum} numberOfLines={1}>{playlist.titulo}</Text>
+                                <Text style={estilos.artistaAlbum} numberOfLines={1}>{playlist.artista}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
                 </View>
             )}
         </View>
@@ -322,16 +382,17 @@ export default function TelaBuscar() {
         <SafeAreaView style={estilos.container}>
             <FlatList
                 ref={flatListRef}
-                data={termoBusca && filtroAtivo !== 'albuns' ? resultados : []}
+                data={dadosLista}
                 keyExtractor={(item) => `${item.source}-${item.id}`}
                 renderItem={renderItem}
                 ListHeaderComponent={cabecalho}
+                ListFooterComponent={rodape}
                 contentContainerStyle={estilos.rolagem}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                    termoBusca && !carregando && !erro && resultados.length === 0 ? (
-                        <Text style={estilos.vazio}>Nenhuma música encontrada.</Text>
+                    termoBusca && !carregando && !erro && resultados.musicas.length === 0 && resultados.playlists.length === 0 ? (
+                        <Text style={estilos.vazio}>Nenhum resultado encontrado para "{termoBusca}".</Text>
                     ) : null
                 }
             />
@@ -346,7 +407,7 @@ const estilos = StyleSheet.create({
         backgroundColor: Tema.fundo,
     },
     rolagem: {
-        paddingHorizontal: 20,
+        paddingHorizontal: 16,
         paddingBottom: 32,
     },
     cabecalho: {
@@ -362,9 +423,8 @@ const estilos = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         backgroundColor: Tema.superficie,
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: Tema.borda,
+        borderRadius: 8,
+        borderWidth: 0,
         paddingHorizontal: 14,
         height: 48,
         gap: 10,
@@ -373,7 +433,8 @@ const estilos = StyleSheet.create({
     inputBusca: {
         flex: 1,
         color: Tema.texto,
-        fontSize: 15,
+        fontSize: 16,
+        fontWeight: '500',
     },
     filtrosBusca: {
         flexDirection: 'row',
@@ -385,12 +446,9 @@ const estilos = StyleSheet.create({
         paddingVertical: 8,
         borderRadius: 20,
         backgroundColor: Tema.superficie,
-        borderWidth: 1,
-        borderColor: Tema.borda,
     },
     filtroAtivo: {
-        backgroundColor: Tema.destaque,
-        borderColor: Tema.destaque,
+        backgroundColor: Tema.destaqueAlt,
     },
     textoFiltro: {
         color: Tema.textoSuave,
@@ -398,30 +456,32 @@ const estilos = StyleSheet.create({
         fontWeight: '600',
     },
     textoFiltroAtivo: {
-        color: Tema.texto,
+        color: Tema.fundo,
+        fontWeight: '700',
     },
     secao: {
         color: Tema.texto,
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: '700',
-        marginBottom: 14,
+        marginBottom: 16,
     },
     secaoResultados: {
+        marginTop: 24,
         marginBottom: 8,
     },
     listaHorizontal: {
-        gap: 12,
+        gap: 16,
         paddingRight: 20,
     },
     cartaoAlbum: {
-        width: 120,
+        width: 140,
     },
     capaAlbum: {
-        width: 120,
-        height: 120,
-        borderRadius: 10,
+        width: 140,
+        height: 140,
+        borderRadius: 8,
         backgroundColor: Tema.superficieClara,
-        marginBottom: 8,
+        marginBottom: 12,
     },
     capaAlbumPlaceholder: {
         alignItems: 'center',
@@ -429,80 +489,75 @@ const estilos = StyleSheet.create({
     },
     tituloAlbum: {
         color: Tema.texto,
-        fontSize: 13,
-        fontWeight: '600',
+        fontSize: 14,
+        fontWeight: '700',
     },
     artistaAlbum: {
         color: Tema.textoSuave,
-        fontSize: 11,
-        marginTop: 2,
+        fontSize: 13,
+        marginTop: 4,
     },
     grade: {
         flexDirection: 'row',
         flexWrap: 'wrap',
-        gap: 10,
+        gap: 16,
         marginBottom: 8,
     },
     cartaoCategoria: {
-        width: '48%',
-        height: 96,
-        borderRadius: 10,
+        width: '47%',
+        height: 100,
+        borderRadius: 8,
         padding: 12,
         overflow: 'hidden',
-        justifyContent: 'flex-end',
+        justifyContent: 'flex-start',
     },
     rotuloCategoria: {
         color: '#FFFFFF',
         fontSize: 16,
-        fontWeight: '800',
+        fontWeight: '700',
+        marginTop: 4,
     },
     iconeCategoria: {
         position: 'absolute',
-        right: 8,
-        bottom: 8,
-        transform: [{ rotate: '12deg' }],
+        right: -8,
+        bottom: -8,
+        transform: [{ rotate: '25deg' }],
     },
     statusBusca: {
         minHeight: 32,
-        marginBottom: 12,
         justifyContent: 'center',
     },
     carregandoRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        gap: 12,
+        marginVertical: 20,
     },
     textoCarregando: {
         color: Tema.textoSecundario,
-        fontSize: 13,
-    },
-    contagem: {
-        color: Tema.textoSecundario,
-        fontSize: 14,
+        fontSize: 15,
     },
     textoErro: {
         color: Tema.erro,
         fontSize: 14,
+        marginVertical: 10,
     },
     linhaMusica: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Tema.superficie,
-        borderRadius: 12,
-        padding: 10,
-        marginBottom: 10,
+        paddingVertical: 8,
+        paddingHorizontal: 8,
+        borderRadius: 8,
+        marginBottom: 4,
         gap: 12,
-        borderWidth: 1,
-        borderColor: Tema.borda,
     },
     linhaMusicaAtiva: {
-        borderColor: Tema.destaqueAlt,
-        backgroundColor: '#1B2A40',
+        backgroundColor: Tema.superficie,
     },
     capa: {
-        width: 56,
-        height: 56,
-        borderRadius: 8,
+        width: 48,
+        height: 48,
+        borderRadius: 4,
         backgroundColor: Tema.superficieClara,
     },
     capaPlaceholder: {
@@ -511,22 +566,23 @@ const estilos = StyleSheet.create({
     },
     infoMusica: {
         flex: 1,
+        justifyContent: 'center',
     },
     tituloMusica: {
         color: Tema.texto,
-        fontSize: 15,
-        fontWeight: '600',
+        fontSize: 16,
+        fontWeight: '500',
     },
     artistaMusica: {
         color: Tema.textoSecundario,
-        fontSize: 13,
-        marginTop: 2,
+        fontSize: 14,
+        marginTop: 4,
     },
     rodapeMusica: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        marginTop: 5,
+        marginTop: 6,
     },
     badgePlataforma: {
         paddingHorizontal: 6,
@@ -536,22 +592,80 @@ const estilos = StyleSheet.create({
         alignItems: 'center',
     },
     textoBadge: {
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: '700',
         letterSpacing: 0.5,
     },
     duracaoMusica: {
         color: Tema.textoSuave,
-        fontSize: 11,
+        fontSize: 12,
     },
     iconePlay: {
-        width: 36,
+        width: 40,
         alignItems: 'center',
     },
     vazio: {
         color: Tema.textoSuave,
-        fontSize: 14,
+        fontSize: 15,
         textAlign: 'center',
-        marginTop: 24,
+        marginTop: 40,
     },
+    // Estilos do layout Spotify-like
+    gridSuperior: {
+        flexDirection: 'row',
+        gap: 24,
+    },
+    colunaEsquerda: {
+        flex: 1,
+    },
+    colunaDireita: {
+        flex: 1,
+    },
+    cardMelhorResultado: {
+        backgroundColor: Tema.superficie,
+        borderRadius: 8,
+        padding: 20,
+        gap: 16,
+    },
+    fotoArtistaMaior: {
+        width: 92,
+        height: 92,
+        borderRadius: 46, // imagem redonda para artistas
+        backgroundColor: Tema.superficieClara,
+    },
+    nomeMelhorResultado: {
+        color: Tema.texto,
+        fontSize: 32,
+        fontWeight: '800',
+        letterSpacing: -0.5,
+    },
+    badgeArtista: {
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        alignSelf: 'flex-start',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 16,
+    },
+    textoBadgeArtista: {
+        color: Tema.texto,
+        fontSize: 13,
+        fontWeight: '700',
+    },
+    rodapeLista: {
+        marginTop: 16,
+    },
+    botaoVerMais: {
+        alignSelf: 'flex-start',
+        marginTop: 8,
+        paddingVertical: 8,
+        paddingHorizontal: 16,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: Tema.borda,
+    },
+    textoBotaoVerMais: {
+        color: Tema.texto,
+        fontSize: 13,
+        fontWeight: '700',
+    }
 });
