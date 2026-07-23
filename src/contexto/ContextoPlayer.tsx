@@ -5,7 +5,7 @@ import React, {
     useContext,
     useState
 } from 'react';
-import { Musica, urlStreamCompleta } from '../lib/apiMusica';
+import { Musica, urlStreamCompleta, resolverAudio } from '../lib/apiMusica';
 import { obterAudioYoutube } from '../lib/youtube';
 
 
@@ -74,11 +74,18 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setIndiceAtual(index);
             setFaixaAtual(musica);
 
-            let url = urlStreamCompleta(musica.streamUrl);
+            let url = musica.streamUrl ? urlStreamCompleta(musica.streamUrl) : '';
 
-            // Para o YouTube, a própria API já expõe /stream/{id} como proxy.
-            // Só chamamos o Piped como último recurso se a streamUrl não for do nosso servidor.
-            if (musica.source.toLowerCase() === 'youtube' && !musica.streamUrl.startsWith('/stream/')) {
+            if (!url || musica.source.toLowerCase() === 'musicbrainz') {
+                try {
+                    const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                    url = urlStreamCompleta(resolucao.url);
+                } catch (err) {
+                    setErroMsg('Áudio não encontrado para esta música nas plataformas.');
+                    setEstado('erro');
+                    return;
+                }
+            } else if (musica.source.toLowerCase() === 'youtube' && !musica.streamUrl.startsWith('/stream/')) {
                 const streamYoutube = await obterAudioYoutube(musica.id);
                 if (streamYoutube) {
                     url = streamYoutube;
@@ -87,6 +94,12 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                     setEstado('erro');
                     return;
                 }
+            }
+
+            if (!url) {
+                setErroMsg('URL de áudio inválida.');
+                setEstado('erro');
+                return;
             }
 
             player.replace(url);

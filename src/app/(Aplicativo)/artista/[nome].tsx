@@ -13,7 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { usePlayer } from "../../../contexto/ContextoPlayer";
-import { Musica, formatarDuracao, pesquisarMusicasPorArtista } from '../../../lib/apiMusica';
+import { Musica, formatarDuracao, pesquisarMusicasPorArtista, buscarMusicasMB } from '../../../lib/apiMusica';
 
 const CORES_PLATAFORMA: Record<string, string> = {
     soundcloud: '#FF5500',
@@ -29,8 +29,10 @@ function corDaPlataforma(source: string): string {
 
 export default function TelaArtista() {
     const router = useRouter();
-    const params = useLocalSearchParams<{ nome: string }>();
-    const nomeArtista = decodeURIComponent(params.nome ?? '');
+    const params = useLocalSearchParams<{ nome: string, nomeArt?: string, source?: string }>();
+    const paramId = decodeURIComponent(params.nome ?? '');
+    const nomeExibicao = params.nomeArt ? decodeURIComponent(params.nomeArt) : paramId;
+    const isMusicBrainz = params.source === 'MusicBrainz';
 
     const [musicas, setMusicas] = useState<Musica[]>([]);
     const [carregando, setCarregando] = useState(true);
@@ -39,8 +41,8 @@ export default function TelaArtista() {
     const { faixaAtual, estado, tocar, pausar, retomar } = usePlayer();
 
     useEffect(() => {
-        if (!nomeArtista) {
-            setErro('Nome do artista não fornecido.');
+        if (!paramId) {
+            setErro('ID ou nome do artista não fornecido.');
             setCarregando(false);
             return;
         }
@@ -51,7 +53,12 @@ export default function TelaArtista() {
             setCarregando(true);
             setErro(null);
             try {
-                const resultados = await pesquisarMusicasPorArtista(nomeArtista, controlador.signal);
+                let resultados;
+                if (isMusicBrainz) {
+                    resultados = await buscarMusicasMB(paramId, controlador.signal);
+                } else {
+                    resultados = await pesquisarMusicasPorArtista(paramId, controlador.signal);
+                }
                 setMusicas(resultados);
             } catch (e) {
                 if (e instanceof Error && e.name !== 'AbortError') {
@@ -63,7 +70,7 @@ export default function TelaArtista() {
         })();
 
         return () => controlador.abort();
-    }, [nomeArtista]);
+    }, [paramId, isMusicBrainz]);
 
     const aoTocar = useCallback(async (item: Musica) => {
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
@@ -129,7 +136,7 @@ export default function TelaArtista() {
             <TouchableOpacity onPress={() => router.back()} style={estilos.botaoVoltar}>
                 <Ionicons name="arrow-back" size={24} color={Tema.texto} />
             </TouchableOpacity>
-            <Text style={estilos.titulo} numberOfLines={1}>{nomeArtista}</Text>
+            <Text style={estilos.titulo} numberOfLines={1}>{nomeExibicao}</Text>
         </View>
     );
 

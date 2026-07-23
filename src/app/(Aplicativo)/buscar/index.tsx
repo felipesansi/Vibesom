@@ -15,7 +15,8 @@ import {
     Musica,
     ResultadoPesquisa,
     formatarDuracao,
-    pesquisar
+    pesquisar,
+    buscarArtistasMB
 } from '../../../lib/apiMusica';
 
 
@@ -103,9 +104,18 @@ export default function TelaBuscar() {
             setErro(null);
             setCarregando(true);
             try {
-                const res = await pesquisar(termoBusca, controlador.signal);
-                setResultados(res);
-                setMelhorArtista(res.artistas.length > 0 ? res.artistas[0] : null);
+                const [res, artistasMB] = await Promise.all([
+                    pesquisar(termoBusca, controlador.signal).catch(() => ({ artistas: [], musicas: [], playlists: [] })),
+                    buscarArtistasMB(termoBusca, controlador.signal).catch(() => [])
+                ]);
+
+                const resultadosCombinados = {
+                    ...res,
+                    artistas: artistasMB.length > 0 ? artistasMB : res.artistas
+                };
+
+                setResultados(resultadosCombinados);
+                setMelhorArtista(resultadosCombinados.artistas.length > 0 ? resultadosCombinados.artistas[0] : null);
             } catch (e) {
                 if (e instanceof Error && e.name !== 'AbortError') {
                     setResultados({ artistas: [], musicas: [], playlists: [] });
@@ -209,7 +219,12 @@ export default function TelaBuscar() {
                 style={estilos.cardMelhorResultado}
                 activeOpacity={0.8}
                 onPress={() => {
-                    router.push(`/artista/${melhorArtista.nome}`);
+                    // Passa o ID do artista se for do MusicBrainz, senão passa o nome
+                    const paramId = melhorArtista.source === 'MusicBrainz' ? melhorArtista.id : melhorArtista.nome;
+                    router.push({
+                        pathname: `/artista/${encodeURIComponent(paramId)}`,
+                        params: { nomeArt: melhorArtista.nome, source: melhorArtista.source }
+                    });
                 }}
             >
                 {melhorArtista.capa ? (

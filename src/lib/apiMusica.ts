@@ -302,3 +302,114 @@ export async function pesquisarAlbums(
 
     return [];
 }
+
+// ============================================================================
+// MusicBrainz e Resolver
+// ============================================================================
+
+export async function buscarArtistasMB(nome: string, signal?: AbortSignal): Promise<Artista[]> {
+    const nomeLimpo = nome.trim();
+    if (!nomeLimpo) return [];
+
+    const url = `${URL_BASE}/musicbrainz/artista/${encodeURIComponent(nomeLimpo)}`;
+    
+    let resposta: Response;
+    try {
+        resposta = await fetch(url, { signal });
+    } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        throw new Error('Sem conexão com o servidor.');
+    }
+
+    if (!resposta.ok) return [];
+
+    try {
+        const dados = await resposta.json();
+        return dados.map((mbArt: any) => ({
+            id: mbArt.id,
+            nome: mbArt.name,
+            source: 'MusicBrainz',
+            capa: null
+        }));
+    } catch {
+        return [];
+    }
+}
+
+export async function buscarAlbunsMB(artistaId: string, signal?: AbortSignal): Promise<Album[]> {
+    const url = `${URL_BASE}/musicbrainz/album/${encodeURIComponent(artistaId)}`;
+    let resposta: Response;
+    try {
+        resposta = await fetch(url, { signal });
+    } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        throw new Error('Sem conexão com o servidor.');
+    }
+
+    if (!resposta.ok) return [];
+
+    try {
+        const dados = await resposta.json();
+        return dados.map((mbAlbum: any) => ({
+            id: mbAlbum.id,
+            titulo: mbAlbum.title,
+            artista: mbAlbum['artist-credit']?.[0]?.name || 'Artista Desconhecido',
+            source: 'MusicBrainz',
+            capa: null 
+        }));
+    } catch {
+        return [];
+    }
+}
+
+export async function buscarMusicasMB(artistaId: string, signal?: AbortSignal): Promise<Musica[]> {
+    const url = `${URL_BASE}/musicbrainz/musicas/${encodeURIComponent(artistaId)}`;
+    let resposta: Response;
+    try {
+        resposta = await fetch(url, { signal });
+    } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        throw new Error('Sem conexão com o servidor.');
+    }
+
+    if (!resposta.ok) return [];
+
+    try {
+        const dados = await resposta.json();
+        return dados.map((mbTrack: any) => ({
+            id: mbTrack.id,
+            titulo: mbTrack.title,
+            artista: mbTrack['artist-credit']?.[0]?.name || 'Artista Desconhecido',
+            source: 'MusicBrainz',
+            capa: null,
+            duracao: mbTrack.length ? Math.floor(mbTrack.length / 1000) : 0,
+            streamUrl: '' 
+        }));
+    } catch {
+        return [];
+    }
+}
+
+export async function resolverAudio(artista: string, faixa: string, signal?: AbortSignal): Promise<{ source: string, url: string, titulo: string }> {
+    const params = new URLSearchParams({ artista, faixa });
+    const url = `${URL_BASE}/resolver?${params.toString()}`;
+    
+    let resposta: Response;
+    try {
+        resposta = await fetch(url, { signal });
+    } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        throw new Error('Sem conexão com o servidor.');
+    }
+
+    if (!resposta.ok) {
+        throw new Error('Áudio não encontrado em nenhuma plataforma.');
+    }
+
+    try {
+        const dados = await resposta.json();
+        return dados;
+    } catch {
+        throw new Error('Erro ao processar resposta do servidor.');
+    }
+}
