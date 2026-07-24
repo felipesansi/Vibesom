@@ -115,7 +115,7 @@ export async function pesquisar(
     };
     if (!termoLimpo) return resultadoVazio;
 
-    const params = new URLSearchParams({ termo: termoLimpo });
+    const params = new URLSearchParams({ termo: termoLimpo, limit: '50' });
     const url = `${URL_BASE}/pesquisa?${params}`;
 
     let resposta: Response;

@@ -222,8 +222,8 @@ export default function TelaBuscar() {
                     // Passa o ID do artista se for do MusicBrainz, senão passa o nome
                     const paramId = melhorArtista.source === 'MusicBrainz' ? melhorArtista.id : melhorArtista.nome;
                     router.push({
-                        pathname: `/artista/${encodeURIComponent(paramId)}`,
-                        params: { nomeArt: melhorArtista.nome, source: melhorArtista.source }
+                        pathname: '/artista/[nome]',
+                        params: { nome: paramId, nomeArt: melhorArtista.nome, source: melhorArtista.source }
                     });
                 }}
             >
@@ -245,7 +245,7 @@ export default function TelaBuscar() {
     };
 
     const dadosLista = termoBusca && !carregando && !erro 
-        ? (filtroAtivo === 'tudo' ? resultados.musicas.slice(0, 4) : (filtroAtivo === 'musicas' ? resultados.musicas : []))
+        ? (filtroAtivo === 'tudo' ? resultados.musicas.slice(0, 10) : (filtroAtivo === 'musicas' ? resultados.musicas : []))
         : [];    
 
     const cabecalho = (
@@ -356,7 +356,7 @@ export default function TelaBuscar() {
 
     const rodape = (
         <View style={estilos.rodapeLista}>
-            {termoBusca && !carregando && filtroAtivo === 'tudo' && resultados.musicas.length > 4 && (
+            {termoBusca && !carregando && filtroAtivo === 'tudo' && resultados.musicas.length > 10 && (
                 <TouchableOpacity style={estilos.botaoVerMais} onPress={() => setFiltroAtivo('musicas')}>
                     <Text style={estilos.textoBotaoVerMais}>Ver todas as músicas</Text>
                 </TouchableOpacity>
