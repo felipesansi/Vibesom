@@ -1,8 +1,9 @@
-import { useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import React, {
     createContext,
     useCallback,
     useContext,
+    useEffect,
     useState
 } from 'react';
 import { Musica, urlStreamCompleta, resolverAudio } from '../lib/apiMusica';
@@ -28,6 +29,7 @@ type ContextoPlayerValor = {
     anterior: () => void;
     alternarRepeticao: () => void;
     alternarAleatorio: () => void;
+    adicionarAFila: (musica: Musica) => void;
 };
 
 
@@ -44,6 +46,15 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     const player = useAudioPlayer(null);
     const status = useAudioPlayerStatus(player);
+
+    // Configura sessão de áudio para reprodução em segundo plano
+    useEffect(() => {
+        setAudioModeAsync({
+            playsInSilentMode: true,
+            shouldPlayInBackground: true,
+            interruptionMode: 'doNotMix',
+        }).catch(e => console.warn('[Player] setAudioModeAsync falhou:', e));
+    }, []);
 
     // Sincroniza estado com status do player
     React.useEffect(() => {
@@ -103,6 +114,23 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             }
 
             player.replace(url);
+
+            // Registra a sessão de mídia antes de iniciar a faixa. Isso cria a
+            // notificação/controle do sistema no Android e a tela bloqueada no iOS.
+            try {
+                player.setActiveForLockScreen(true, {
+                    title: musica.titulo,
+                    artist: musica.artista,
+                    albumTitle: musica.artista,
+                    ...(musica.capa ? { artworkUrl: musica.capa } : {}),
+                }, {
+                    showSeekBackward: true,
+                    showSeekForward: true,
+                });
+            } catch (erro) {
+                console.warn('[Player] Controles do sistema indisponíveis:', erro);
+            }
+
             player.play();
         } catch (e) {
             console.error('[Player] Erro ao tocar:', e);
@@ -140,6 +168,19 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const alternarRepeticao = () => setRepetir(!repetir);
     const alternarAleatorio = () => setAleatorio(!aleatorio);
 
+    const adicionarAFila = useCallback((musica: Musica) => {
+        setLista(prev => {
+            // Evita duplicatas na fila
+            const jaExiste = prev.some(m => m.id === musica.id && m.source === musica.source);
+            if (jaExiste) return prev;
+            // Insere logo após a faixa atual
+            const novaLista = [...prev];
+            const insercao = indiceAtual >= 0 ? indiceAtual + 1 : novaLista.length;
+            novaLista.splice(insercao, 0, musica);
+            return novaLista;
+        });
+    }, [indiceAtual]);
+
     // Sincroniza a propriedade loop nativa do player com o estado do contexto
     React.useEffect(() => {
         player.loop = repetir;
@@ -151,6 +192,22 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         }
     }, [status.isLoaded, status.didJustFinish, player.loop, proxima]);
 
+    // Mantém título, artista e capa atualizados no controle de mídia quando
+    // a faixa muda enquanto o app está em segundo plano.
+    React.useEffect(() => {
+        if (!faixaAtual) return;
+        try {
+            player.updateLockScreenMetadata({
+                title: faixaAtual.titulo,
+                artist: faixaAtual.artista,
+                albumTitle: faixaAtual.artista,
+                ...(faixaAtual.capa ? { artworkUrl: faixaAtual.capa } : {}),
+            });
+        } catch (erro) {
+            console.warn('[Player] Não foi possível atualizar os controles:', erro);
+        }
+    }, [faixaAtual, player]);
+
     const pausar = useCallback(() => {
         player.pause();
     }, [player]);
@@ -161,6 +218,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     const parar = useCallback(() => {
         player.pause();
+        try { player.clearLockScreenControls(); } catch (_) {}
         setFaixaAtual(null);
     }, [player]);
 
@@ -185,7 +243,8 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 proxima,
                 anterior,
                 alternarRepeticao,
-                alternarAleatorio
+                alternarAleatorio,
+                adicionarAFila
             }}
         >
             {children}

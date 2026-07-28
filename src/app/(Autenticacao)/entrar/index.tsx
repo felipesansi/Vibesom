@@ -14,8 +14,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import Entrada from '../../../componentes/Entrada';
 import Tema from '../../../../constantes/Cores';
+import Entrada from '../../../componentes/Entrada';
 import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 
 type Modo = 'entrada' | 'cadastro';

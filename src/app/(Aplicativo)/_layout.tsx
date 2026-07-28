@@ -70,6 +70,14 @@ export default function LayoutAplicativo() {
                     href: null,
                 }}
             />
+            <Tabs.Screen
+                name="artista/[nome]"
+                options={{ href: null }}
+            />
+            <Tabs.Screen
+                name="album/[id]"
+                options={{ href: null }}
+            />
         </Tabs>
         <View style={estilos.miniPlayerWrapper}>
             <MiniPlayer />
