@@ -6,8 +6,7 @@ import React, {
     useEffect,
     useState
 } from 'react';
-import { Musica, urlStreamCompleta, resolverAudio } from '../lib/apiMusica';
-import { obterAudioYoutube } from '../lib/youtube';
+import { Musica, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
@@ -87,21 +86,15 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
             let url = musica.streamUrl ? urlStreamCompleta(musica.streamUrl) : '';
 
-            if (!url || musica.source.toLowerCase() === 'musicbrainz') {
+            // Se a música não tiver uma URL de stream direta, usa a API para resolver.
+            // Isso centraliza a lógica de busca de áudio no backend.
+            if (!url) {
                 try {
+                    // O resolver busca a melhor fonte de áudio na API (pode ser YouTube, SC, etc.)
                     const resolucao = await resolverAudio(musica.artista, musica.titulo);
                     url = urlStreamCompleta(resolucao.url);
                 } catch (err) {
                     setErroMsg('Áudio não encontrado para esta música nas plataformas.');
-                    setEstado('erro');
-                    return;
-                }
-            } else if (musica.source.toLowerCase() === 'youtube' && !musica.streamUrl.startsWith('/stream/')) {
-                const streamYoutube = await obterAudioYoutube(musica.id);
-                if (streamYoutube) {
-                    url = streamYoutube;
-                } else {
-                    setErroMsg('Não foi possível obter o áudio do YouTube. Tente outra música.');
                     setEstado('erro');
                     return;
                 }
@@ -121,9 +114,13 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 player.setActiveForLockScreen(true, {
                     title: musica.titulo,
                     artist: musica.artista,
-                    albumTitle: musica.artista,
+                    albumTitle: musica.album || musica.artista,
                     ...(musica.capa ? { artworkUrl: musica.capa } : {}),
                 }, {
+                    showPlay: true,
+                    showPause: true,
+                    showNext: true,
+                    showPrevious: true,
                     showSeekBackward: true,
                     showSeekForward: true,
                 });

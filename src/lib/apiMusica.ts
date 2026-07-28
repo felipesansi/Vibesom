@@ -11,6 +11,7 @@ export type Musica = {
     id: string;
     titulo: string;
     artista: string;
+    album?: string;
     /** URL da capa do álbum — pode ser string vazia ou null */
     capa: string | null;
     /** Duração em segundos */
@@ -399,6 +400,7 @@ export async function buscarMusicasDeAlbumMB(
             id: mbTrack.id,
             titulo: mbTrack.title ?? mbTrack.titulo ?? 'Sem título',
             artista: artistaNome ?? (mbTrack['artist-credit']?.[0]?.name || 'Artista Desconhecido'),
+            album: tituloAlbum,
             source: mbTrack.preview ? 'Deezer' : 'MusicBrainz',
             capa: mbTrack.cover ?? mbTrack.capa ?? null,
             duracao: mbTrack.length ? Math.floor(mbTrack.length / 1000) : 0,
@@ -577,26 +579,70 @@ async function buscarCandidatoDaFonte(
 }
 
 /**
- * Retorna quatro alternativas para a faixa: duas do YouTube e duas do
- * SoundCloud. Faixas com menos de um minuto são sempre descartadas.
+ * Busca em todas as plataformas por fontes de áudio alternativas para uma
+ * determinada música, usando o endpoint de pesquisa genérico da API.
+ * Retorna as 5 melhores correspondências encontradas.
  */
 export async function buscarFontesDeAudio(
     musica: Musica,
     signal?: AbortSignal
 ): Promise<FonteAudio[]> {
-    const consulta = encodeURIComponent(`${musica.artista} ${musica.titulo}`);
-    const [youtube, soundcloud] = await Promise.allSettled([
-        buscarCandidatoDaFonte(`${URL_BASE}/youtube/busca?termo=${consulta}&limite=20`, musica, 'YouTube', 2, signal),
-        buscarCandidatoDaFonte(`${URL_BASE}/soundcloud/search/${consulta}`, musica, 'SoundCloud', 2, signal),
-    ]);
+    const termo = `${musica.artista} ${musica.titulo}`;
 
-    return [youtube, soundcloud]
-        .flatMap(resultado => resultado.status === 'fulfilled' ? resultado.value : [])
-        .filter((fonte): fonte is FonteAudio =>
-            typeof fonte?.source === 'string'
-            && typeof fonte.streamUrl === 'string'
-            && fonte.streamUrl.length > 0
-            && fonte.duracao >= 60
-        )
-        .slice(0, 4);
+    try {
+        const { musicas } = await pesquisar(termo, signal);
+
+        if (!musicas || musicas.length === 0) return [];
+
+        const tituloOriginal = normalizarTexto(musica.titulo);
+        const artistaOriginal = normalizarTexto(musica.artista);
+
+        const pontuarCandidato = (candidato: Musica) => {
+            if (!candidato.titulo || !candidato.artista) return -99;
+            if ((candidato.duracao ?? 0) < 45) return -99; // descarta faixas muito curtas
+
+            const tituloCandidato = normalizarTexto(candidato.titulo);
+            const artistaCandidato = normalizarTexto(candidato.artista);
+            let pontuacao = 0;
+
+            // Bônus por título e artista correspondentes
+            if (tituloCandidato.includes(tituloOriginal) || tituloOriginal.includes(tituloCandidato)) {
+                pontuacao += 5;
+            }
+            if (artistaCandidato.includes(artistaOriginal)) {
+                pontuacao += 3;
+            }
+            if (tituloCandidato === tituloOriginal) {
+                pontuacao += 5; // Bônus maior para correspondência exata
+            }
+
+            // Penalidade por diferença de duração
+            if (musica.duracao > 0 && candidato.duracao > 0) {
+                const diff = Math.abs(musica.duracao - candidato.duracao);
+                if (diff > 10) pontuacao -= 1; // Pequena penalidade
+                if (diff > 20) pontuacao -= 2; // Penalidade maior
+            }
+
+            // Penalidade por termos extras no título (ex: "live", "remix")
+            const extras = ['live', 'remix', 'acoustic', 'cover', 'official video'];
+            for (const extra of extras) {
+                if (tituloCandidato.includes(extra) && !tituloOriginal.includes(extra)) {
+                    pontuacao -= 3;
+                }
+            }
+            return pontuacao;
+        };
+
+        const candidatos = musicas
+            .map(c => ({ ...c, pontuacao: pontuarCandidato(c) }))
+            .filter(c => c.pontuacao > 0)
+            .sort((a, b) => b.pontuacao - a.pontuacao);
+
+        return candidatos.slice(0, 5);
+
+    } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') throw err;
+        console.error('[buscarFontesDeAudio] Falha ao buscar fontes:', err);
+        return [];
+    }
 }
