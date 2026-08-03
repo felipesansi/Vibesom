@@ -4,7 +4,7 @@
     "slug": "vibesom",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/logo.png",
+    "icon": "./assets/images/icone.png",
     "scheme": "vibesom",
     "userInterfaceStyle": "dark",
     "ios": {
@@ -15,7 +15,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/logo.png",
+        "foregroundImage": "./assets/images/icone.png",
         "backgroundColor": "#000000"
       },
       "predictiveBackGestureEnabled": false,
@@ -30,7 +30,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/logo.png"
+      "favicon": "./assets/images/icone.png"
     },
     "plugins": [
       "expo-router",

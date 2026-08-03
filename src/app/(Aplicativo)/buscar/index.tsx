@@ -74,7 +74,7 @@ export default function TelaBuscar() {
     const inputRef = useRef<TextInput>(null);
     const flatListRef = useRef<FlatList>(null);
 
-    const { faixaAtual, estado, tocar, pausar, retomar, adicionarAFila } = usePlayer();
+    const { faixaAtual, estado, erro: erroPlayer, tocar, pausar, retomar, adicionarAFila } = usePlayer();
     const [menuMusica, setMenuMusica] = useState<Musica | null>(null);
     const [curtidas, setCurtidas] = useState<Set<string>>(new Set());
     const slideAnim = useRef(new Animated.Value(300)).current;
@@ -418,10 +418,16 @@ export default function TelaBuscar() {
             </View>
 
             {termoBusca ? (
-                <View style={estilos.filtrosBusca}>
-                    <TouchableOpacity onPress={() => setFiltroAtivo('tudo')} style={[estilos.filtroBadge, filtroAtivo === 'tudo' && estilos.filtroAtivo]}>
-                        <Text style={[estilos.textoFiltro, filtroAtivo === 'tudo' && estilos.textoFiltroAtivo]}>Tudo</Text>
-                    </TouchableOpacity>
+                <>
+                    {erroPlayer ? (
+                        <View style={estilos.alertaPlayer}>
+                            <Text style={estilos.textoErroPlayer}>{erroPlayer}</Text>
+                        </View>
+                    ) : null}
+                    <View style={estilos.filtrosBusca}>
+                        <TouchableOpacity onPress={() => setFiltroAtivo('tudo')} style={[estilos.filtroBadge, filtroAtivo === 'tudo' && estilos.filtroAtivo]}>
+                            <Text style={[estilos.textoFiltro, filtroAtivo === 'tudo' && estilos.textoFiltroAtivo]}>Tudo</Text>
+                        </TouchableOpacity>
                     <TouchableOpacity onPress={() => setFiltroAtivo('musicas')} style={[estilos.filtroBadge, filtroAtivo === 'musicas' && estilos.filtroAtivo]}>
                         <Text style={[estilos.textoFiltro, filtroAtivo === 'musicas' && estilos.textoFiltroAtivo]}>Músicas</Text>
                     </TouchableOpacity>
@@ -432,6 +438,7 @@ export default function TelaBuscar() {
                         <Text style={[estilos.textoFiltro, filtroAtivo === 'artistas' && estilos.textoFiltroAtivo]}>Artistas</Text>
                     </TouchableOpacity>
                 </View>
+                </>
             ) : null}
 
             {!termoBusca ? (
@@ -856,6 +863,18 @@ const estilos = StyleSheet.create({
         color: Tema.erro,
         fontSize: 14,
         marginVertical: 10,
+    },
+    alertaPlayer: {
+        backgroundColor: '#FEE2E2',
+        borderColor: '#FECACA',
+        borderWidth: 1,
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 12,
+    },
+    textoErroPlayer: {
+        color: '#B91C1C',
+        fontSize: 14,
     },
     cardMusica: {
         backgroundColor: Tema.superficie,

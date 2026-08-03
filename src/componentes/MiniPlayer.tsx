@@ -1,21 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useSegments } from 'expo-router';
 import React from 'react';
-import { Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Tema from '../../constantes/Cores';
 import { usePlayer } from '../contexto/ContextoPlayer';
+import { useBluetooth } from './useBluetooth';
 
 export function MiniPlayer() {
     const { faixaAtual, estado, pausar, retomar, proxima, anterior } = usePlayer();
+    const { abrirConfiguracoesBluetooth, connectedDevice } = useBluetooth();
     const router = useRouter();
     const segmentos = useSegments();
     const ultimoClique = React.useRef(0);
 
-    if (!faixaAtual || (segmentos as string[])?.includes('biblioteca')) return null;
+    if ((segmentos as string[])?.includes('biblioteca')) return null;
 
     const tocando = estado === 'tocando';
+    const carregando = estado === 'carregando';
 
     const alternarReproducao = () => {
+        if (!faixaAtual) {
+            router.push('/(Aplicativo)/buscar' as any);
+            return;
+        }
+        if (carregando) return;
         if (tocando) {
             pausar();
         } else {
@@ -26,7 +34,8 @@ export function MiniPlayer() {
     const aoClicar = () => {
         const agora = Date.now();
         if (agora - ultimoClique.current < 400) {
-            router.push('/(Aplicativo)/biblioteca' as any);
+            // Use a route path compatible com expo-router (sem o grupo)
+            router.push('/biblioteca' as any);
             ultimoClique.current = 0;
         } else {
             ultimoClique.current = agora;
@@ -40,7 +49,7 @@ export function MiniPlayer() {
                 activeOpacity={0.8} 
                 onPress={aoClicar}
             >
-                {faixaAtual.capa ? (
+                {faixaAtual?.capa ? (
                     <Image source={{ uri: faixaAtual.capa }} style={estilos.capa} />
                 ) : (
                     <View style={[estilos.capa, estilos.capaPlaceholder]}>
@@ -49,8 +58,8 @@ export function MiniPlayer() {
                 )}
 
                 <View style={estilos.textos}>
-                    <Text style={estilos.titulo} numberOfLines={1}>{faixaAtual.titulo}</Text>
-                    <Text style={estilos.artista} numberOfLines={1}>{faixaAtual.artista}</Text>
+                    <Text style={estilos.titulo} numberOfLines={1}>{faixaAtual?.titulo ?? 'Toque para procurar'}</Text>
+                    <Text style={estilos.artista} numberOfLines={1}>{faixaAtual?.artista ?? ''}</Text>
                 </View>
             </TouchableOpacity>
 
@@ -60,11 +69,18 @@ export function MiniPlayer() {
                 </TouchableOpacity>
 
                 <TouchableOpacity onPress={alternarReproducao} style={[estilos.botao, estilos.botaoPlay]}>
-                    <Ionicons name={tocando ? "pause" : "play"} size={24} color={Tema.fundo} />
+                    {carregando ? (
+                        <ActivityIndicator size="small" color={Tema.fundo} />
+                    ) : (
+                        <Ionicons name={tocando ? "pause" : "play"} size={24} color={Tema.fundo} />
+                    )}
                 </TouchableOpacity>
-
                 <TouchableOpacity onPress={proxima} style={estilos.botao}>
                     <Ionicons name="play-skip-forward" size={24} color={Tema.texto} />
+                </TouchableOpacity>
+
+                <TouchableOpacity onPress={abrirConfiguracoesBluetooth} style={estilos.botao} accessibilityLabel="Bluetooth">
+                    <Ionicons name="bluetooth" size={20} color={connectedDevice ? Tema.destaqueAlt : Tema.textoSuave} />
                 </TouchableOpacity>
             </View>
         </View>

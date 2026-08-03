@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import {
     ScrollView,
     StyleSheet,
@@ -60,7 +60,34 @@ export default function TelaInicio() {
 
     const primeiroNome = String(nome).split(' ')[0];
     const filtros = ['Para você', 'Novidades', 'Relax', 'Treino'];
+    const [filtroSelecionado, setFiltroSelecionado] = useState('Para você');
     const { abrirConfiguracoesBluetooth } = useBluetooth();
+
+    const handleFiltroPress = useCallback((filtro: string) => {
+        setFiltroSelecionado(filtro);
+    }, []);
+
+    const handleRecentePress = useCallback((item: ItemRecente) => {
+        router.push('/(Aplicativo)/buscar');
+    }, [router]);
+
+    const handlePlaylistPress = useCallback((item: ItemPlaylist) => {
+        router.push('/(Aplicativo)/buscar');
+    }, [router]);
+
+    const handlePlayPause = useCallback(() => {
+        if (!faixaAtual) {
+            router.push('/(Aplicativo)/buscar');
+            return;
+        }
+
+        if (estado === 'tocando') {
+            pausar();
+        } else {
+            retomar();
+        }
+    }, [faixaAtual, estado, pausar, retomar, router]);
+
     return (
         <SafeAreaView style={estilos.container}>
             <Ionicons
@@ -68,8 +95,9 @@ export default function TelaInicio() {
                 size={20}
                 color={Tema.texto}
                 onPress={abrirConfiguracoesBluetooth}
-                style={{ position: 'absolute', top: 20, right: 20 }}
-
+                style={estilos.bluetooth}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                accessibilityLabel="Configurações Bluetooth"
             />
 
             <ScrollView
@@ -86,15 +114,16 @@ export default function TelaInicio() {
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={estilos.filtros}
                 >
-                    {filtros.map((filtro, indice) => (
+                    {filtros.map((filtro) => (
                         <TouchableOpacity
                             key={filtro}
-                            style={[estilos.filtro, indice === 0 && estilos.filtroAtivo]}
+                            style={[estilos.filtro, filtroSelecionado === filtro && estilos.filtroAtivo]}
+                            onPress={() => handleFiltroPress(filtro)}
                         >
                             <Text
                                 style={[
                                     estilos.textoFiltro,
-                                    indice === 0 && estilos.textoFiltroAtivo,
+                                    filtroSelecionado === filtro && estilos.textoFiltroAtivo,
                                 ]}
                             >
                                 {filtro}
@@ -110,9 +139,9 @@ export default function TelaInicio() {
                     contentContainerStyle={estilos.listaHorizontal}
                 >
                     {RECENTES.map((item) => (
-                        <TouchableOpacity key={item.id} style={estilos.cartaoRecente}>
-                            <View style={[estilos.capaRecente, { backgroundColor: item.cor }]}>
-                                <Ionicons name={item.icone || "musical-notes"} size={28} color={Tema.texto} />
+                        <TouchableOpacity key={item.id} style={estilos.cartaoRecente} onPress={() => handleRecentePress(item)}>
+                            <View style={[estilos.capaRecente, { backgroundColor: item.cor }]}> 
+                                <Ionicons name={item.icone || 'musical-notes'} size={28} color={Tema.texto} />
                             </View>
                             <Text style={estilos.tituloRecente} numberOfLines={1}>
                                 {item.titulo}
@@ -126,7 +155,7 @@ export default function TelaInicio() {
 
                 <Text style={estilos.secao}>Playlists</Text>
                 {PLAYLISTS.map((item) => (
-                    <TouchableOpacity key={item.id} style={estilos.linhaPlaylist}>
+                    <TouchableOpacity key={item.id} style={estilos.linhaPlaylist} onPress={() => handlePlaylistPress(item)}>
                         <View style={[estilos.capaPlaylist, { backgroundColor: item.cor }]}>
                             <Ionicons name="albums" size={22} color={Tema.texto} />
                         </View>
@@ -249,5 +278,11 @@ const estilos = StyleSheet.create({
         color: Tema.textoSuave,
         fontSize: 12,
         marginTop: 2,
+    },
+    bluetooth: {
+        position: 'absolute',
+        top: 12,
+        right: 16,
+        zIndex: 20,
     },
 });

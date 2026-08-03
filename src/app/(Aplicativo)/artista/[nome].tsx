@@ -9,7 +9,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
@@ -114,6 +114,7 @@ export default function TelaArtista() {
 
     const renderMusica = useCallback(({ item, index }: { item: Musica; index: number }) => {
         const ativa = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
+        const carregandoEsta = ativa && estado === 'carregando';
         return (
             <TouchableOpacity style={[estilos.musica, ativa && estilos.musicaAtiva]} onPress={() => setMusicaEscolhida(item)}>
                 <Text style={estilos.numero}>{index + 1}</Text>
@@ -122,10 +123,11 @@ export default function TelaArtista() {
                     <Text style={estilos.subtituloMusica} numberOfLines={1}>{item.artista}</Text>
                 </View>
                 <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
+                {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
                 <Ionicons name="ellipsis-horizontal" size={20} color={Tema.textoSuave} />
             </TouchableOpacity>
         );
-    }, [faixaAtual]);
+    }, [faixaAtual, estado]);
 
     const cabecalho = (
         <>
@@ -176,6 +178,6 @@ const estilos = StyleSheet.create({
     perfil: { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 }, fotoArtista: { width: 130, height: 130, borderRadius: 65, backgroundColor: Tema.superficieClara }, capaVazia: { alignItems: 'center', justifyContent: 'center' },
     rotulo: { color: Tema.destaqueAlt, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, marginTop: 16 }, nome: { color: Tema.texto, fontSize: 30, fontWeight: '900', textAlign: 'center', marginTop: 5 }, resumo: { color: Tema.textoSecundario, fontSize: 14, marginTop: 8 },
     secao: { marginBottom: 28 }, tituloSecao: { color: Tema.texto, fontSize: 21, fontWeight: '800', marginLeft: 16, marginBottom: 14 }, listaAlbuns: { gap: 14, paddingHorizontal: 16 }, album: { width: 144 }, capaAlbum: { width: 144, height: 144, borderRadius: 8, backgroundColor: Tema.superficieClara }, tituloAlbum: { color: Tema.texto, fontSize: 14, fontWeight: '700', marginTop: 8, lineHeight: 19 }, metaAlbum: { color: Tema.textoSuave, fontSize: 12, marginTop: 3 },
-    tituloFaixas: { marginTop: 2 }, musica: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9 }, musicaAtiva: { backgroundColor: Tema.superficie }, numero: { color: Tema.textoSuave, width: 18, textAlign: 'right', fontVariant: ['tabular-nums'] }, tituloMusica: { color: Tema.texto, fontSize: 15, fontWeight: '600' }, subtituloMusica: { color: Tema.textoSecundario, fontSize: 13, marginTop: 3 }, duracao: { color: Tema.textoSuave, fontSize: 13 },
+    tituloFaixas: { marginTop: 2 }, musica: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9 }, musicaAtiva: { backgroundColor: Tema.superficie }, numero: { color: Tema.textoSuave, width: 18, textAlign: 'right', fontVariant: ['tabular-nums'] }, tituloMusica: { color: Tema.texto, fontSize: 15, fontWeight: '600' }, subtituloMusica: { color: Tema.textoSuave, fontSize: 13, marginTop: 3 }, duracao: { color: Tema.textoSuave, fontSize: 13 },
     vazio: { color: Tema.textoSuave, textAlign: 'center', marginTop: 45, paddingHorizontal: 30 }, erro: { color: Tema.erro, textAlign: 'center', padding: 24 },
 });

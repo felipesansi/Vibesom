@@ -54,6 +54,7 @@ export default function TelaAlbum() {
 
     const renderMusica = useCallback(({ item, index }: { item: Musica; index: number }) => {
         const ativa = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
+        const carregandoEsta = ativa && estado === 'carregando';
         return <TouchableOpacity style={[estilos.faixa, ativa && estilos.faixaAtiva]} onPress={() => setMusicaEscolhida(item)}>
             <Text style={estilos.numero}>{index + 1}</Text>
             <View style={{ flex: 1 }}>
@@ -61,9 +62,10 @@ export default function TelaAlbum() {
                 <Text style={estilos.artistaFaixa} numberOfLines={1}>{item.artista}</Text>
             </View>
             <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
+            {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
             <Ionicons name="play-circle-outline" size={25} color={Tema.textoSecundario} />
         </TouchableOpacity>;
-    }, [faixaAtual]);
+    }, [faixaAtual, estado]);
 
     const titulo = params.titulo ? decodeURIComponent(params.titulo) : 'Álbum';
     const artista = params.artista ? decodeURIComponent(params.artista) : '';

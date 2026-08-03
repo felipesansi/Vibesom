@@ -6,6 +6,7 @@ import React, {
     useEffect,
     useState
 } from 'react';
+import { Alert } from 'react-native';
 import { Musica, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 
 
@@ -63,6 +64,11 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             return;
         }
 
+        if (erroMsg) {
+            setEstado('erro');
+            return;
+        }
+
         if (!status.isLoaded || status.isBuffering) {
             setEstado('carregando');
         } else if (status.playing) {
@@ -70,7 +76,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         } else {
             setEstado('pausado');
         }
-    }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual]);
+    }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual, erroMsg]);
 
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
         try {
@@ -94,15 +100,19 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                     const resolucao = await resolverAudio(musica.artista, musica.titulo);
                     url = urlStreamCompleta(resolucao.url);
                 } catch (err) {
-                    setErroMsg('Áudio não encontrado para esta música nas plataformas.');
+                    const mensagem = 'Áudio não encontrado para esta música nas plataformas.';
+                    setErroMsg(mensagem);
                     setEstado('erro');
+                    Alert.alert('Erro ao carregar música', mensagem);
                     return;
                 }
             }
 
             if (!url) {
-                setErroMsg('URL de áudio inválida.');
+                const mensagem = 'URL de áudio inválida.';
+                setErroMsg(mensagem);
                 setEstado('erro');
+                Alert.alert('Erro ao carregar música', mensagem);
                 return;
             }
 
@@ -127,8 +137,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             player.play();
         } catch (e) {
             console.error('[Player] Erro ao tocar:', e);
-            setErroMsg('Não foi possível carregar o áudio desta música.');
+            const mensagem = 'Não foi possível carregar o áudio desta música.';
+            setErroMsg(mensagem);
             setEstado('erro');
+            Alert.alert('Erro ao carregar música', mensagem);
         }
     }, [player, lista, setEstado, setErroMsg, setLista, setIndiceAtual, setFaixaAtual]);
 
@@ -276,3 +288,11 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         </ContextoPlayer.Provider>
     );
 }
+
+export const usePlayer = () => {
+    const contexto = useContext(ContextoPlayer);
+    if (!contexto) {
+        throw new Error('usePlayer deve ser usado dentro de ProvedorPlayer');
+    }
+    return contexto;
+};
