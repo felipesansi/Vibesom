@@ -117,10 +117,6 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                     albumTitle: musica.album || musica.artista,
                     ...(musica.capa ? { artworkUrl: musica.capa } : {}),
                 }, {
-                    showPlay: true,
-                    showPause: true,
-                    showNext: true,
-                    showPrevious: true,
                     showSeekBackward: true,
                     showSeekForward: true,
                 });
@@ -193,13 +189,25 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     // a faixa muda enquanto o app está em segundo plano.
     React.useEffect(() => {
         if (!faixaAtual) return;
+
+        const metadata = {
+            title: faixaAtual.titulo,
+            artist: faixaAtual.artista,
+            albumTitle: faixaAtual.album || faixaAtual.artista,
+            ...(faixaAtual.capa ? { artworkUrl: faixaAtual.capa } : {}),
+        };
+
         try {
-            player.updateLockScreenMetadata({
-                title: faixaAtual.titulo,
-                artist: faixaAtual.artista,
-                albumTitle: faixaAtual.artista,
-                ...(faixaAtual.capa ? { artworkUrl: faixaAtual.capa } : {}),
+            player.setActiveForLockScreen(true, metadata, {
+                showSeekBackward: true,
+                showSeekForward: true,
             });
+        } catch (erro) {
+            console.warn('[Player] Não foi possível ativar os controles do sistema:', erro);
+        }
+
+        try {
+            player.updateLockScreenMetadata(metadata);
         } catch (erro) {
             console.warn('[Player] Não foi possível atualizar os controles:', erro);
         }
@@ -210,12 +218,32 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     }, [player]);
 
     const retomar = useCallback(() => {
+        if (faixaAtual) {
+            try {
+                player.setActiveForLockScreen(true, {
+                    title: faixaAtual.titulo,
+                    artist: faixaAtual.artista,
+                    albumTitle: faixaAtual.album || faixaAtual.artista,
+                    ...(faixaAtual.capa ? { artworkUrl: faixaAtual.capa } : {}),
+                }, {
+                    showSeekBackward: true,
+                    showSeekForward: true,
+                });
+            } catch (erro) {
+                console.warn('[Player] Não foi possível reativar os controles do sistema:', erro);
+            }
+        }
+
         player.play();
-    }, [player]);
+    }, [player, faixaAtual]);
 
     const parar = useCallback(() => {
         player.pause();
-        try { player.clearLockScreenControls(); } catch (_) {}
+        try {
+            player.setActiveForLockScreen(false);
+        } catch (_) {
+            try { player.clearLockScreenControls(); } catch (_) {}
+        }
         setFaixaAtual(null);
     }, [player]);
 
@@ -247,11 +275,4 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             {children}
         </ContextoPlayer.Provider>
     );
-}
-
-
-export function usePlayer(): ContextoPlayerValor {
-    const ctx = useContext(ContextoPlayer);
-    if (!ctx) throw new Error('usePlayer deve ser usado dentro de <ProvedorPlayer>');
-    return ctx;
 }
