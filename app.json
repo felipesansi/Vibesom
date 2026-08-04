@@ -7,6 +7,13 @@
     "icon": "./assets/images/icone.png",
     "scheme": "vibesom",
     "userInterfaceStyle": "dark",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/11dcefc8-d61b-49db-a917-53534c3cdf11",
+      "fallbackToCacheTimeout": 0
+    },
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
@@ -47,7 +54,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/logo.png",
+          "image": "./assets/images/icone.png",
           "resizeMode": "cover",
           "backgroundColor": "#000000"
         }
