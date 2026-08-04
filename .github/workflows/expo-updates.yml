@@ -25,7 +25,7 @@ jobs:
 
       - name: Publish EAS update
         env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
           CI: 'true'
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           npx eas update --branch default --message "CI: automatic update from $GITHUB_SHA" --platform all
