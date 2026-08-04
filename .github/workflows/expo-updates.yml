@@ -20,7 +20,12 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Publish Expo update
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Publish EAS update
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
-        run: npx expo publish --non-interactive --release-channel=default
+          CI: 'true'
+        run: |
+          npx eas update --branch default --message "CI: automatic update from $GITHUB_SHA" --platform all
