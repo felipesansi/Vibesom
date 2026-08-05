@@ -9,10 +9,14 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+        # Código
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
@@ -23,9 +27,12 @@ jobs:
       - name: Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: Publish EAS update
+      - name: Publish EAS Update
         env:
           CI: 'true'
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
-          npx eas update --branch default --message "CI: automatic update from $GITHUB_SHA" --platform all
+          eas update \
+            --channel preview \
+            --message "CI: automatic update from $GITHUB_SHA" \
+            --platform android
