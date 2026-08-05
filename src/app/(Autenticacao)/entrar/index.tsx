@@ -225,7 +225,11 @@ export default function TelaEntrar() {
                         </TouchableOpacity>
 
                         {modo === 'entrada' && (
-                            <TouchableOpacity style={estilos.esqueciSenha}>
+                            <TouchableOpacity
+                                style={estilos.esqueciSenha}
+                                onPress={() => roteador.push('/(Autenticacao)/senha')}
+                                activeOpacity={0.7}
+                            >
                                 <Text style={estilos.textoEsqueciSenha}>Esqueceu a senha?</Text>
                             </TouchableOpacity>
                         )}

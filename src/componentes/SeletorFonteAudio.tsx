@@ -85,7 +85,8 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
                         </TouchableOpacity>
                     </View>
 
-                    <Text style={estilos.ajuda}>Duas opções do YouTube e duas do SoundCloud, com duração mínima de um minuto.</Text>
+                    <Text style={estilos.ajuda}>Se não tocar, tente outra fonte </Text>
+                    <Text style={estilos.ajuda}>ou procure direto na busca pelo nome do artista e da música.</Text>
 
                     {carregando ? (
                         <View style={estilos.estado}>
