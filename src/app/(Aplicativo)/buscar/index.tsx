@@ -3,12 +3,13 @@ import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-    ActivityIndicator, Animated, FlatList, Image, Linking, Modal, ScrollView,
+    ActivityIndicator, Alert, Animated, FlatList, Image, Linking, Modal, ScrollView,
     StyleSheet, Text, TextInput, TouchableOpacity, View,
     useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
+import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import {
     Artista,
@@ -18,6 +19,12 @@ import {
     formatarDuracao,
     pesquisar
 } from '../../../lib/apiMusica';
+import {
+    buscarMusicasDaPlaylist,
+    buscarPlaylistFavoritasDoUsuario,
+    removerMusicaFavorita,
+    salvarMusicaFavorita
+} from '../../../lib/supabase';
 
 
 type Categoria = {
@@ -75,8 +82,11 @@ export default function TelaBuscar() {
     const flatListRef = useRef<FlatList>(null);
 
     const { faixaAtual, estado, erro: erroPlayer, tocar, pausar, retomar, adicionarAFila } = usePlayer();
+    const { usuario } = useAutenticacao();
     const [menuMusica, setMenuMusica] = useState<Musica | null>(null);
-    const [curtidas, setCurtidas] = useState<Set<string>>(new Set());
+    const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
+    const [playlistFavoritasId, setPlaylistFavoritasId] = useState<string | null>(null);
+    const [carregandoFavoritos, setCarregandoFavoritos] = useState(false);
     const slideAnim = useRef(new Animated.Value(300)).current;
 
     useEffect(() => {
@@ -132,6 +142,76 @@ export default function TelaBuscar() {
         return () => controlador.abort();
     }, [termoBusca]);
 
+    useEffect(() => {
+        if (!usuario?.id) {
+            setFavoritas(new Set());
+            setPlaylistFavoritasId(null);
+            return;
+        }
+
+        let ativo = true;
+        setCarregandoFavoritos(true);
+
+        (async () => {
+            try {
+                const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                if (!ativo) return;
+                setPlaylistFavoritasId(playlistId);
+
+                if (!playlistId) {
+                    setFavoritas(new Set());
+                    return;
+                }
+
+                const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
+                if (!ativo) return;
+                setFavoritas(new Set(musicasFavoritas.map((musica) => `${musica.source}:${musica.id}`)));
+            } catch (erro) {
+                console.warn('[Favoritas] falha ao carregar favoritas:', erro);
+            } finally {
+                if (ativo) setCarregandoFavoritos(false);
+            }
+        })();
+
+        return () => { ativo = false; };
+    }, [usuario?.id]);
+
+    const alternarCurtida = useCallback(async (musica: Musica) => {
+        if (!usuario?.id) {
+            Alert.alert('Faça login', 'Você precisa entrar para favoritar músicas.');
+            return;
+        }
+
+        const chave = `${musica.source}:${musica.id}`;
+        const jaCurtida = favoritas.has(chave);
+
+        setFavoritas((prev) => {
+            const novo = new Set(prev);
+            if (jaCurtida) novo.delete(chave);
+            else novo.add(chave);
+            return novo;
+        });
+
+        if (jaCurtida) {
+            const { erro } = await removerMusicaFavorita(usuario.id, musica);
+            if (erro) {
+                setFavoritas((prev) => new Set(prev).add(chave));
+                Alert.alert('Erro', erro);
+            }
+            return;
+        }
+
+        const { erro } = await salvarMusicaFavorita(usuario, musica);
+        if (erro) {
+            setFavoritas((prev) => {
+                const novo = new Set(prev);
+                novo.delete(chave);
+                return novo;
+            });
+            Alert.alert('Erro', erro);
+        }
+    }, [favoritas, usuario]);
+
     const buscarPorCategoria = useCallback((rotulo: string) => {
         setConsulta(rotulo);
         setTermoBusca(rotulo);
@@ -166,20 +246,12 @@ export default function TelaBuscar() {
         }).start(() => setMenuMusica(null));
     }, [slideAnim]);
 
-    const alternarCurtida = useCallback((id: string) => {
-        setCurtidas(prev => {
-            const novo = new Set(prev);
-            if (novo.has(id)) novo.delete(id);
-            else novo.add(id);
-            return novo;
-        });
-    }, []);
-
     const renderItem = useCallback(({ item }: { item: Musica }) => {
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         const tocandoEsta = ehAtual && estado === 'tocando';
         const carregandoEsta = ehAtual && estado === 'carregando';
-        const curtida = curtidas.has(item.id);
+        const chaveMusica = `${item.source}:${item.id}`;
+        const curtida = favoritas.has(chaveMusica);
         const fonte = item.source.toLowerCase();
         const corFonte = corDaPlataforma(item.source);
 
@@ -321,7 +393,7 @@ export default function TelaBuscar() {
                     {/* 4. Curtir */}
                     <TouchableOpacity
                         style={[estilos.botaoAcao, curtida && { backgroundColor: '#EC4899' + '18' }]}
-                        onPress={() => alternarCurtida(item.id)}
+                        onPress={() => alternarCurtida(item)}
                         activeOpacity={0.7}
                     >
                         <Ionicons
@@ -336,7 +408,7 @@ export default function TelaBuscar() {
                 </View>
             </View>
         );
-    }, [faixaAtual, estado, aoTocar, adicionarAFila, alternarCurtida, curtidas]);
+    }, [faixaAtual, estado, aoTocar, adicionarAFila, alternarCurtida, favoritas]);
 
     const renderCardArtista = () => {
         if (!melhorArtista) return null;
@@ -655,20 +727,20 @@ export default function TelaBuscar() {
                                     {/* Opção 3: Curtir */}
                                     <TouchableOpacity
                                         style={estilos.menuOpcao}
-                                        onPress={() => { alternarCurtida(menuMusica.id); fecharMenu(); }}
+                                        onPress={() => { if (menuMusica) alternarCurtida(menuMusica); fecharMenu(); }}
                                     >
                                         <View style={[estilos.menuIconeWrapper, {
-                                            backgroundColor: curtidas.has(menuMusica.id) ? '#EC4899' + '33' : Tema.superficie
-                                        }]}>
+                                            backgroundColor: favoritas.has(`${menuMusica.source}:${menuMusica.id}`) ? '#EC4899' + '33' : Tema.superficie
+                                        }]}> 
                                             <Ionicons
-                                                name={curtidas.has(menuMusica.id) ? 'heart' : 'heart-outline'}
+                                                name={favoritas.has(`${menuMusica.source}:${menuMusica.id}`) ? 'heart' : 'heart-outline'}
                                                 size={24}
-                                                color={curtidas.has(menuMusica.id) ? '#EC4899' : Tema.textoSuave}
+                                                color={favoritas.has(`${menuMusica.source}:${menuMusica.id}`) ? '#EC4899' : Tema.textoSuave}
                                             />
                                         </View>
                                         <View style={estilos.menuOpcaoTexto}>
-                                            <Text style={estilos.menuOpcaoLabel}>
-                                                {curtidas.has(menuMusica.id) ? 'Remover curtida' : 'Curtir'}
+                                                    <Text style={estilos.menuOpcaoLabel}>
+                                                {favoritas.has(`${menuMusica.source}:${menuMusica.id}`) ? 'Remover curtida' : 'Curtir'}
                                             </Text>
                                             <Text style={estilos.menuOpcaoDesc}>Salvar nas músicas curtidas</Text>
                                         </View>

@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { SeletorFonteAudio } from '../../../componentes/SeletorFonteAudio';
+import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import {
     Album,
@@ -42,7 +43,10 @@ export default function TelaArtista() {
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
     const [musicaEscolhida, setMusicaEscolhida] = useState<Musica | null>(null);
+    const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
+    const [carregandoFavoritos, setCarregandoFavoritos] = useState(false);
     const { faixaAtual, estado, tocar, pausar, retomar } = usePlayer();
+    const { usuario } = useAutenticacao();
 
     useEffect(() => {
         if (!idOuNome) {
@@ -71,6 +75,37 @@ export default function TelaArtista() {
 
         return () => controlador.abort();
     }, [idOuNome, nomeArtista, usaMusicBrainz]);
+
+    useEffect(() => {
+        if (!usuario?.id) {
+            setFavoritas(new Set());
+            return;
+        }
+
+        let ativo = true;
+        setCarregandoFavoritos(true);
+
+        (async () => {
+            try {
+                const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                if (!ativo) return;
+                if (!playlistId) {
+                    setFavoritas(new Set());
+                    return;
+                }
+
+                const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
+                if (!ativo) return;
+                setFavoritas(new Set(musicasFavoritas.map((musica) => `${musica.source}:${musica.id}`)));
+            } catch (erro) {
+                console.warn('[Artista] falha ao carregar favoritas:', erro);
+            } finally {
+                if (ativo) setCarregandoFavoritos(false);
+            }
+        })();
+
+        return () => { ativo = false; };
+    }, [usuario?.id]);
 
     const { discos, singles } = useMemo(() => ({
         discos: albuns.filter(album => !ehSingle(album)),
@@ -102,6 +137,42 @@ export default function TelaArtista() {
         } as any);
     }, [idOuNome, router]);
 
+    const alternarCurtida = useCallback(async (musica: Musica) => {
+        if (!usuario?.id) {
+            Alert.alert('Faça login', 'Você precisa entrar para favoritar músicas.');
+            return;
+        }
+
+        const chave = `${musica.source}:${musica.id}`;
+        const jaCurtida = favoritas.has(chave);
+
+        setFavoritas((prev) => {
+            const novo = new Set(prev);
+            if (jaCurtida) novo.delete(chave);
+            else novo.add(chave);
+            return novo;
+        });
+
+        if (jaCurtida) {
+            const { erro } = await removerMusicaFavorita(usuario.id, musica);
+            if (erro) {
+                setFavoritas((prev) => new Set(prev).add(chave));
+                Alert.alert('Erro', erro);
+            }
+            return;
+        }
+
+        const { erro } = await salvarMusicaFavorita(usuario, musica);
+        if (erro) {
+            setFavoritas((prev) => {
+                const novo = new Set(prev);
+                novo.delete(chave);
+                return novo;
+            });
+            Alert.alert('Erro', erro);
+        }
+    }, [favoritas, usuario]);
+
     const renderAlbum = (album: Album) => (
         <TouchableOpacity key={`${album.source}-${album.id}`} style={estilos.album} onPress={() => abrirAlbum(album)} activeOpacity={.8}>
             {album.capa ? <Image source={{ uri: album.capa }} style={estilos.capaAlbum} /> : (
@@ -116,18 +187,32 @@ export default function TelaArtista() {
         const ativa = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         const carregandoEsta = ativa && estado === 'carregando';
         return (
-            <TouchableOpacity style={[estilos.musica, ativa && estilos.musicaAtiva]} onPress={() => setMusicaEscolhida(item)}>
-                <Text style={estilos.numero}>{index + 1}</Text>
-                <View style={{ flex: 1 }}>
-                    <Text style={[estilos.tituloMusica, ativa && { color: Tema.destaqueAlt }]} numberOfLines={1}>{item.titulo}</Text>
-                    <Text style={estilos.subtituloMusica} numberOfLines={1}>{item.artista}</Text>
+            <View style={[estilos.musica, ativa && estilos.musicaAtiva]}>
+                <TouchableOpacity style={estilos.musicaInfo} onPress={() => setMusicaEscolhida(item)}>
+                    <Text style={estilos.numero}>{index + 1}</Text>
+                    <View style={{ flex: 1 }}>
+                        <Text style={[estilos.tituloMusica, ativa && { color: Tema.destaqueAlt }]} numberOfLines={1}>{item.titulo}</Text>
+                        <Text style={estilos.subtituloMusica} numberOfLines={1}>{item.artista}</Text>
+                    </View>
+                </TouchableOpacity>
+                <View style={estilos.musicaAcoes}>
+                    <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
+                    {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
+                    <TouchableOpacity
+                        style={estilos.botaoCurtir}
+                        onPress={() => alternarCurtida(item)}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name={favoritas.has(`${item.source}:${item.id}`) ? 'heart' : 'heart-outline'}
+                            size={20}
+                            color={favoritas.has(`${item.source}:${item.id}`) ? Tema.destaqueAlt : Tema.textoSuave}
+                        />
+                    </TouchableOpacity>
                 </View>
-                <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
-                {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
-                <Ionicons name="ellipsis-horizontal" size={20} color={Tema.textoSuave} />
-            </TouchableOpacity>
+            </View>
         );
-    }, [faixaAtual, estado]);
+    }, [faixaAtual, estado, favoritas, alternarCurtida]);
 
     const cabecalho = (
         <>
@@ -173,11 +258,172 @@ export default function TelaArtista() {
 }
 
 const estilos = StyleSheet.create({
-    container: { flex: 1, backgroundColor: Tema.fundo }, rolagem: { paddingBottom: 32 }, centro: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-    topo: { paddingHorizontal: 16, paddingTop: 6 }, voltar: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-    perfil: { alignItems: 'center', paddingHorizontal: 24, paddingBottom: 28 }, fotoArtista: { width: 130, height: 130, borderRadius: 65, backgroundColor: Tema.superficieClara }, capaVazia: { alignItems: 'center', justifyContent: 'center' },
-    rotulo: { color: Tema.destaqueAlt, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, marginTop: 16 }, nome: { color: Tema.texto, fontSize: 30, fontWeight: '900', textAlign: 'center', marginTop: 5 }, resumo: { color: Tema.textoSecundario, fontSize: 14, marginTop: 8 },
-    secao: { marginBottom: 28 }, tituloSecao: { color: Tema.texto, fontSize: 21, fontWeight: '800', marginLeft: 16, marginBottom: 14 }, listaAlbuns: { gap: 14, paddingHorizontal: 16 }, album: { width: 144 }, capaAlbum: { width: 144, height: 144, borderRadius: 8, backgroundColor: Tema.superficieClara }, tituloAlbum: { color: Tema.texto, fontSize: 14, fontWeight: '700', marginTop: 8, lineHeight: 19 }, metaAlbum: { color: Tema.textoSuave, fontSize: 12, marginTop: 3 },
-    tituloFaixas: { marginTop: 2 }, musica: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9 }, musicaAtiva: { backgroundColor: Tema.superficie }, numero: { color: Tema.textoSuave, width: 18, textAlign: 'right', fontVariant: ['tabular-nums'] }, tituloMusica: { color: Tema.texto, fontSize: 15, fontWeight: '600' }, subtituloMusica: { color: Tema.textoSuave, fontSize: 13, marginTop: 3 }, duracao: { color: Tema.textoSuave, fontSize: 13 },
-    vazio: { color: Tema.textoSuave, textAlign: 'center', marginTop: 45, paddingHorizontal: 30 }, erro: { color: Tema.erro, textAlign: 'center', padding: 24 },
+    container: {
+        flex: 1,
+        backgroundColor: Tema.fundo,
+    },
+    rolagem: {
+        paddingBottom: 32,
+    },
+    centro: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    topo: {
+        paddingHorizontal: 16,
+        paddingTop: 10,
+        marginBottom: 6,
+    },
+    voltar: {
+        width: 40,
+        height: 40,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    perfil: {
+        alignItems: 'center',
+        paddingHorizontal: 24,
+        paddingBottom: 28,
+    },
+    fotoArtista: {
+        width: 142,
+        height: 142,
+        borderRadius: 72,
+        backgroundColor: Tema.superficieClara,
+    },
+    capaVazia: {
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rotulo: {
+        color: Tema.destaqueAlt,
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 1.2,
+        marginTop: 16,
+    },
+    nome: {
+        color: Tema.texto,
+        fontSize: 30,
+        fontWeight: '900',
+        textAlign: 'center',
+        marginTop: 8,
+    },
+    resumo: {
+        color: Tema.textoSuave,
+        fontSize: 14,
+        marginTop: 8,
+        lineHeight: 20,
+        textAlign: 'center',
+        maxWidth: '85%',
+    },
+    secao: {
+        marginBottom: 30,
+    },
+    tituloSecao: {
+        color: Tema.texto,
+        fontSize: 21,
+        fontWeight: '800',
+        marginLeft: 16,
+        marginBottom: 14,
+    },
+    listaAlbuns: {
+        gap: 14,
+        paddingHorizontal: 16,
+    },
+    album: {
+        width: 144,
+    },
+    capaAlbum: {
+        width: 144,
+        height: 144,
+        borderRadius: 18,
+        backgroundColor: Tema.superficieClara,
+    },
+    tituloAlbum: {
+        color: Tema.texto,
+        fontSize: 14,
+        fontWeight: '700',
+        marginTop: 10,
+        lineHeight: 20,
+    },
+    metaAlbum: {
+        color: Tema.textoSuave,
+        fontSize: 12,
+        marginTop: 4,
+    },
+    tituloFaixas: {
+        marginTop: 2,
+        marginLeft: 16,
+    },
+    musica: {
+        minHeight: 72,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        marginHorizontal: 16,
+        marginBottom: 10,
+        borderRadius: 18,
+        backgroundColor: Tema.superficie,
+        borderWidth: 1,
+        borderColor: Tema.borda,
+    },
+    musicaAtiva: {
+        borderColor: Tema.destaqueAlt,
+        backgroundColor: Tema.superficieClara,
+    },
+    musicaInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    musicaAcoes: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    numero: {
+        color: Tema.textoSuave,
+        width: 24,
+        textAlign: 'right',
+        fontVariant: ['tabular-nums'],
+    },
+    tituloMusica: {
+        color: Tema.texto,
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    subtituloMusica: {
+        color: Tema.textoSuave,
+        fontSize: 13,
+        marginTop: 3,
+    },
+    duracao: {
+        color: Tema.textoSuave,
+        fontSize: 13,
+        minWidth: 40,
+        textAlign: 'right',
+    },
+    botaoCurtir: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Tema.superficieClara,
+    },
+    vazio: {
+        color: Tema.textoSuave,
+        textAlign: 'center',
+        marginTop: 45,
+        paddingHorizontal: 30,
+    },
+    erro: {
+        color: Tema.erro,
+        textAlign: 'center',
+        padding: 24,
+    },
 });

@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+import { criarOuAtualizarPerfilUsuario, supabase } from '../lib/supabase';
 
 type TipoContextoAutenticacao = {
     usuario: User | null;
@@ -21,16 +21,22 @@ export function ProvedorAutenticacao({ children: filhos }: { children: React.Rea
     const [carregando, setCarregando] = useState(true);
 
     useEffect(() => {
-        supabase.auth.getSession().then(({ data: { session } }) => {
+        supabase.auth.getSession().then(async ({ data: { session } }) => {
             setSessao(session);
             setUsuario(session?.user ?? null);
             setCarregando(false);
+            if (session?.user) {
+                await criarOuAtualizarPerfilUsuario(session.user);
+            }
         });
 
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((_evento, sessaoAtual) => {
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_evento, sessaoAtual) => {
             setSessao(sessaoAtual);
             setUsuario(sessaoAtual?.user ?? null);
             setCarregando(false);
+            if (sessaoAtual?.user) {
+                await criarOuAtualizarPerfilUsuario(sessaoAtual.user);
+            }
         });
 
         return () => subscription.unsubscribe();

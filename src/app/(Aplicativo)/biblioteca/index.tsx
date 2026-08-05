@@ -1,242 +1,250 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     ActivityIndicator,
-    Image,
-    Platform,
     SafeAreaView,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
 import Tema from '../../../../constantes/Cores';
+import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
-import { formatarDuracao } from '../../../lib/apiMusica';
+import { formatarDuracao, Musica } from '../../../lib/apiMusica';
+import {
+    buscarMusicasDaPlaylist,
+    buscarPlaylistFavoritasDoUsuario,
+    removerMusicaFavorita,
+} from '../../../lib/supabase';
 
-export default function TelaPlayerCompleto() {
-  const router = useRouter();
-  const { 
-    faixaAtual, estado, erro, posicao, duracao, 
-    pausar, retomar, proxima, anterior,
-    aleatorio, repetir, alternarAleatorio, alternarRepeticao 
-  } = usePlayer();
+export default function TelaBiblioteca() {
+    const router = useRouter();
+    const { usuario } = useAutenticacao();
+    const { tocar } = usePlayer();
+    const [musicas, setMusicas] = useState<Musica[]>([]);
+    const [carregando, setCarregando] = useState(false);
+    const [erro, setErro] = useState<string | null>(null);
 
-  const handleGoBack = useCallback(() => {
-    router.back();
-  }, [router]);
+    useEffect(() => {
+        if (!usuario?.id) {
+            setMusicas([]);
+            return;
+        }
 
-  const handlePlayPause = useCallback(() => {
-    if (!faixaAtual) return;
-    if (estado === 'tocando') {
-      pausar();
-    } else {
-      retomar();
+        let ativo = true;
+        setCarregando(true);
+        setErro(null);
+
+        (async () => {
+            try {
+                const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                if (!ativo) return;
+                if (!playlistId) {
+                    setMusicas([]);
+                    return;
+                }
+
+                const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
+                if (!ativo) return;
+                setMusicas(musicasFavoritas);
+            } catch (e) {
+                console.warn('[Biblioteca] erro ao carregar músicas favoritas:', e);
+                if (ativo) setErro('Não foi possível carregar suas músicas favoritas.');
+            } finally {
+                if (ativo) setCarregando(false);
+            }
+        })();
+
+        return () => {
+            ativo = false;
+        };
+    }, [usuario?.id]);
+
+    const tocarPlaylist = useCallback(async () => {
+        if (musicas.length > 0) {
+            await tocar(musicas[0], musicas);
+        }
+    }, [musicas, tocar]);
+
+    const tocarMusica = useCallback(async (musica: Musica) => {
+        await tocar(musica, musicas);
+    }, [musicas, tocar]);
+
+    const removerFavorita = useCallback(async (musica: Musica) => {
+        if (!usuario?.id) return;
+
+        setErro(null);
+        const { erro } = await removerMusicaFavorita(usuario.id, musica);
+        if (erro) {
+            setErro(erro);
+            return;
+        }
+
+        setMusicas((prev) => prev.filter((item) => item.source !== musica.source || item.id !== musica.id));
+    }, [usuario?.id]);
+
+    const abrirBuscar = useCallback(() => {
+        router.push('/buscar');
+    }, [router]);
+
+    if (!usuario) {
+        return (
+            <SafeAreaView style={estilos.container}>
+                <View style={estilos.cardVazio}>
+                    <Ionicons name="heart-outline" size={48} color={Tema.textoSuave} />
+                    <Text style={estilos.tituloVazio}>Faça login para ver suas favoritas</Text>
+                    <TouchableOpacity style={estilos.botaoVazio} onPress={abrirBuscar}>
+                        <Text style={estilos.textoBotaoVazio}>Buscar músicas</Text>
+                    </TouchableOpacity>
+                </View>
+            </SafeAreaView>
+        );
     }
-  }, [faixaAtual, estado, pausar, retomar]);
 
-  const progresso = duracao > 0 ? posicao / duracao : 0;
-
-  if (!faixaAtual) {
     return (
-      <SafeAreaView style={[estilos.container, estilos.containerVazio]}>
-        <TouchableOpacity onPress={handleGoBack} style={estilos.botaoVoltar}>
-          <Ionicons name="chevron-down" size={30} color={Tema.texto} />
-        </TouchableOpacity>
-        <View style={estilos.conteudoVazio}>
-          <Ionicons name="musical-notes-outline" size={64} color={Tema.textoSuave} />
-          <Text style={estilos.textoVazio}>Nenhuma música tocando no momento.</Text>
-        </View>
-      </SafeAreaView>
+        <SafeAreaView style={estilos.container}>
+            <ScrollView contentContainerStyle={estilos.rolagem} showsVerticalScrollIndicator={false}>
+                <Text style={estilos.titulo}>Sua Biblioteca</Text>
+                <Text style={estilos.subtitulo}>Favoritas</Text>
+
+                {carregando ? (
+                    <View style={estilos.cardVazio}>
+                        <ActivityIndicator size="large" color={Tema.destaque} />
+                    </View>
+                ) : erro ? (
+                    <View style={estilos.cardVazio}>
+                        <Text style={estilos.textoErro}>{erro}</Text>
+                    </View>
+                ) : musicas.length === 0 ? (
+                    <View style={estilos.cardVazio}>
+                        <Ionicons name="heart" size={48} color={Tema.textoSuave} />
+                        <Text style={estilos.tituloVazio}>Sem músicas favoritas ainda</Text>
+                        <TouchableOpacity style={estilos.botaoVazio} onPress={abrirBuscar}>
+                            <Text style={estilos.textoBotaoVazio}>Buscar músicas</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : (
+                    <>
+                        <TouchableOpacity style={estilos.botaoTocarTudo} onPress={tocarPlaylist}>
+                            <Text style={estilos.textoBotaoTocarTudo}>Tocar todas</Text>
+                        </TouchableOpacity>
+                        {musicas.map((musica) => (
+                            <View key={`${musica.source}-${musica.id}`} style={estilos.itemMusica}>
+                                <TouchableOpacity style={estilos.infoMusica} onPress={() => tocarMusica(musica)}>
+                                    <Text style={estilos.tituloMusica} numberOfLines={1}>{musica.titulo}</Text>
+                                    <Text style={estilos.artistaMusica} numberOfLines={1}>{musica.artista}</Text>
+                                </TouchableOpacity>
+                                <View style={estilos.actionsMusica}>
+                                    <Text style={estilos.duracaoMusica}>{formatarDuracao(musica.duracao)}</Text>
+                                    <TouchableOpacity style={estilos.botaoRemover} onPress={() => removerFavorita(musica)}>
+                                        <Ionicons name="trash-outline" size={20} color={Tema.textoSuave} />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        ))}
+                    </>
+                )}
+            </ScrollView>
+        </SafeAreaView>
     );
-  }
-
-  if (estado === 'erro') {
-    return (
-      <SafeAreaView style={[estilos.container, estilos.containerVazio]}>
-        <TouchableOpacity onPress={handleGoBack} style={estilos.botaoVoltar}>
-          <Ionicons name="chevron-down" size={30} color={Tema.texto} />
-        </TouchableOpacity>
-        <View style={estilos.conteudoVazio}>
-          <Ionicons name="warning-outline" size={60} color={Tema.erro} />
-          <Text style={estilos.textoVazio}>{erro || 'Ocorreu um erro ao carregar a música.'}</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  return (
-    <SafeAreaView style={estilos.container}>
-      <TouchableOpacity onPress={handleGoBack} style={estilos.botaoVoltar}>
-        <Ionicons name="chevron-down" size={30} color={Tema.texto} />
-      </TouchableOpacity>
-
-      <View style={estilos.conteudo}>
-        {faixaAtual.capa ? (
-          <Image source={{ uri: faixaAtual.capa }} style={estilos.capaAlbum} />
-        ) : (
-          <View style={[estilos.capaAlbum, estilos.capaAlbumPlaceholder]}>
-            <Ionicons name="musical-notes" size={80} color={Tema.textoSuave} />
-          </View>
-        )}
-
-        <Text style={estilos.tituloMusica} numberOfLines={2}>
-          {faixaAtual.titulo}
-        </Text>
-        <Text style={estilos.artistaMusica} numberOfLines={1}>
-          {faixaAtual.artista}
-        </Text>
-
-        <View style={estilos.controlesProgresso}>
-          <View style={estilos.barraProgresso}>
-            <View style={[estilos.barraPreenchida, { width: `${progresso * 100}%` }]} />
-          </View>
-          <View style={estilos.tempos}>
-            <Text style={estilos.tempoTexto}>{formatarDuracao(posicao)}</Text>
-            <Text style={estilos.tempoTexto}>{formatarDuracao(duracao)}</Text>
-          </View>
-        </View>
-
-        <View style={estilos.controlesPlayer}>
-          <TouchableOpacity style={estilos.botaoSecundario} onPress={alternarAleatorio}>
-            <Ionicons name="shuffle" size={24} color={aleatorio ? Tema.destaqueAlt : Tema.textoSuave} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={estilos.botaoControle} onPress={anterior}>
-            <Ionicons name="play-skip-back" size={32} color={Tema.texto} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={estilos.botaoPlayPause} onPress={handlePlayPause}>
-            {estado === 'carregando' ? (
-              <ActivityIndicator size="large" color={Tema.texto} />
-            ) : (
-              <Ionicons
-                name={estado === 'tocando' ? 'pause' : 'play'}
-                size={48}
-                color={Tema.texto}
-                style={{ marginLeft: estado === 'tocando' ? 0 : 4 }}
-              />
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity style={estilos.botaoControle} onPress={proxima}>
-            <Ionicons name="play-skip-forward" size={32} color={Tema.texto} />
-          </TouchableOpacity>
-
-          <TouchableOpacity style={estilos.botaoSecundario} onPress={alternarRepeticao}>
-            <Ionicons name="repeat" size={24} color={repetir ? Tema.destaqueAlt : Tema.textoSuave} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </SafeAreaView>
-  );
 }
 
 const estilos = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Tema.fundo,
-    paddingTop: Platform.OS === 'android' ? 25 : 0,
-  },
-  containerVazio: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  conteudoVazio: {
-    alignItems: 'center',
-    gap: 10,
-  },
-  textoVazio: {
-    color: Tema.textoSuave,
-    fontSize: 16,
-    marginTop: 10,
-  },
-  botaoVoltar: {
-    position: 'absolute',
-    top: Platform.OS === 'android' ? 35 : 15,
-    left: 15,
-    zIndex: 1,
-    padding: 5,
-  },
-  conteudo: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  capaAlbum: {
-    width: '80%',
-    aspectRatio: 1,
-    borderRadius: 20,
-    backgroundColor: Tema.superficieClara,
-    marginBottom: 40,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  capaAlbumPlaceholder: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tituloMusica: {
-    color: Tema.texto,
-    fontSize: 28,
-    fontWeight: '800',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  artistaMusica: {
-    color: Tema.textoSecundario,
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: 40,
-  },
-  controlesProgresso: {
-    width: '100%',
-    marginBottom: 40,
-  },
-  barraProgresso: {
-    height: 4,
-    backgroundColor: Tema.borda,
-    borderRadius: 2,
-    width: '100%',
-  },
-  barraPreenchida: {
-    height: '100%',
-    backgroundColor: Tema.destaqueAlt,
-    borderRadius: 2,
-  },
-  tempos: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
-  },
-  tempoTexto: {
-    color: Tema.textoSuave,
-    fontSize: 12,
-  },
-  controlesPlayer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    width: '100%',
-  },
-  botaoControle: {
-    padding: 10,
-  },
-  botaoSecundario: {
-    padding: 10,
-  },
-  botaoPlayPause: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: Tema.destaque,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+    container: {
+        flex: 1,
+        backgroundColor: Tema.fundo,
+    },
+    rolagem: {
+        padding: 20,
+        paddingBottom: 32,
+    },
+    titulo: {
+        color: Tema.texto,
+        fontSize: 28,
+        fontWeight: '800',
+        marginBottom: 10,
+    },
+    subtitulo: {
+        color: Tema.textoSuave,
+        fontSize: 16,
+        marginBottom: 18,
+    },
+    cardVazio: {
+        flex: 1,
+        minHeight: 240,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        paddingTop: 40,
+    },
+    tituloVazio: {
+        color: Tema.texto,
+        fontSize: 18,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
+    botaoVazio: {
+        marginTop: 14,
+        backgroundColor: Tema.destaque,
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 999,
+    },
+    textoBotaoVazio: {
+        color: Tema.fundo,
+        fontWeight: '700',
+    },
+    textoErro: {
+        color: Tema.erro,
+        fontSize: 15,
+        textAlign: 'center',
+    },
+    botaoTocarTudo: {
+        backgroundColor: Tema.destaque,
+        borderRadius: 16,
+        paddingVertical: 14,
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    textoBotaoTocarTudo: {
+        color: Tema.fundo,
+        fontWeight: '700',
+    },
+    itemMusica: {
+        backgroundColor: Tema.superficie,
+        borderRadius: 16,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: Tema.borda,
+    },
+    infoMusica: {
+        marginBottom: 12,
+    },
+    tituloMusica: {
+        color: Tema.texto,
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    artistaMusica: {
+        color: Tema.textoSuave,
+        fontSize: 14,
+        marginTop: 4,
+    },
+    actionsMusica: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    duracaoMusica: {
+        color: Tema.textoSuave,
+        fontSize: 13,
+    },
+    botaoRemover: {
+        padding: 8,
+    },
 });
 

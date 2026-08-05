@@ -36,6 +36,7 @@ const RECENTES: ItemRecente[] = [
 ];
 
 const PLAYLISTS: ItemPlaylist[] = [
+    { id: 'favoritas', titulo: 'Favoritas', descricao: 'Músicas que você curtiu', cor: '#EC4899' },
     { id: '1', titulo: 'Descobertas', descricao: 'Novos sons toda semana', cor: '#6366F1' },
     { id: '2', titulo: 'Para treinar', descricao: 'Energia alta', cor: '#F59E0B' },
     { id: '3', titulo: 'Acústico', descricao: 'Voz e violão', cor: '#14B8A6' },
@@ -72,6 +73,10 @@ export default function TelaInicio() {
     }, [router]);
 
     const handlePlaylistPress = useCallback((item: ItemPlaylist) => {
+        if (item.id === 'favoritas') {
+            router.push('/biblioteca');
+            return;
+        }
         router.push('/(Aplicativo)/buscar');
     }, [router]);
 
