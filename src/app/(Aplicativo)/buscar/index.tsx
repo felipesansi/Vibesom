@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
-import { useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useNavigation, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator, Alert, Animated, FlatList, Image, Linking, Modal, ScrollView,
@@ -142,39 +142,41 @@ export default function TelaBuscar() {
         return () => controlador.abort();
     }, [termoBusca]);
 
-    useEffect(() => {
-        if (!usuario?.id) {
-            setFavoritas(new Set());
-            setPlaylistFavoritasId(null);
-            return;
-        }
-
-        let ativo = true;
-        setCarregandoFavoritos(true);
-
-        (async () => {
-            try {
-                const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
-                if (!ativo) return;
-                setPlaylistFavoritasId(playlistId);
-
-                if (!playlistId) {
-                    setFavoritas(new Set());
-                    return;
-                }
-
-                const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
-                if (!ativo) return;
-                setFavoritas(new Set(musicasFavoritas.map((musica) => `${musica.source}:${musica.id}`)));
-            } catch (erro) {
-                console.warn('[Favoritas] falha ao carregar favoritas:', erro);
-            } finally {
-                if (ativo) setCarregandoFavoritos(false);
+    useFocusEffect(
+        useCallback(() => {
+            if (!usuario?.id) {
+                setFavoritas(new Set());
+                setPlaylistFavoritasId(null);
+                return;
             }
-        })();
 
-        return () => { ativo = false; };
-    }, [usuario?.id]);
+            let ativo = true;
+            setCarregandoFavoritos(true);
+
+            (async () => {
+                try {
+                    const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                    if (!ativo) return;
+                    setPlaylistFavoritasId(playlistId);
+
+                    if (!playlistId) {
+                        setFavoritas(new Set());
+                        return;
+                    }
+
+                    const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
+                    if (!ativo) return;
+                    setFavoritas(new Set(musicasFavoritas.map((musica) => `${musica.source}:${musica.id}`)));
+                } catch (erro) {
+                    console.warn('[Favoritas] falha ao carregar favoritas:', erro);
+                } finally {
+                    if (ativo) setCarregandoFavoritos(false);
+                }
+            })();
+
+            return () => { ativo = false; };
+        }, [usuario?.id])
+    );
 
     const alternarCurtida = useCallback(async (musica: Musica) => {
         if (!usuario?.id) {
@@ -255,160 +257,78 @@ export default function TelaBuscar() {
         const fonte = item.source.toLowerCase();
         const corFonte = corDaPlataforma(item.source);
 
-        // Botão 3: ação específica da plataforma
-        const acaoPlatadorma = (() => {
-            if (fonte === 'soundcloud') return {
-                icone: 'logo-soundcloud' as const,
-                label: 'SoundCloud',
-                cor: '#FF5500',
-                acao: () => Linking.openURL(`https://soundcloud.com/search?q=${encodeURIComponent(item.titulo)}`),
-            };
-            if (fonte === 'youtube') return {
-                icone: 'logo-youtube' as const,
-                label: 'YouTube',
-                cor: '#FF0000',
-                acao: () => Linking.openURL(`https://youtube.com/watch?v=${item.id}`),
-            };
-            if (fonte === 'audius') return {
-                icone: 'musical-note' as const,
-                label: 'Audius',
-                cor: '#CC0000',
-                acao: () => Linking.openURL(`https://audius.co`),
-            };
-            if (fonte === 'jamendo') return {
-                icone: 'musical-note' as const,
-                label: 'Jamendo',
-                cor: '#00A6A6',
-                acao: () => Linking.openURL(`https://www.jamendo.com/track/${item.id}`),
-            };
-            if (fonte === 'bandcamp') return {
-                icone: 'musical-note' as const,
-                label: 'Bandcamp',
-                cor: '#1DA0C3',
-                acao: () => Linking.openURL(`https://bandcamp.com`),
-            };
-            // default
-            return {
-                icone: 'share-outline' as const,
-                label: 'Compartilhar',
-                cor: Tema.textoSecundario,
-                acao: () => { },
-            };
-        })();
-
         return (
-            <View style={[estilos.cardMusica, ehAtual && estilos.cardMusicaAtivo]}>
-                {/* Linha superior: capa + info */}
+            <View style={[estilos.musicaCompacta, ehAtual && estilos.musicaCompactaAtiva]}>
                 <TouchableOpacity
-                    style={estilos.linhaMusica}
+                    style={estilos.musicaCompactaInfo}
                     activeOpacity={0.75}
                     onPress={() => aoTocar(item)}
                 >
                     {item.capa ? (
-                        <Image source={{ uri: item.capa }} style={estilos.capa} />
+                        <Image source={{ uri: item.capa }} style={estilos.capaCompacta} />
                     ) : (
-                        <View style={[estilos.capa, estilos.capaPlaceholder]}>
-                            <Ionicons name="musical-notes" size={24} color={Tema.textoSuave} />
+                        <View style={[estilos.capaCompacta, estilos.capaPlaceholder]}>
+                            <Ionicons name="musical-notes" size={20} color={Tema.textoSuave} />
                         </View>
                     )}
 
-                    <View style={estilos.infoMusica}>
-                        <Text style={[estilos.tituloMusica, ehAtual && { color: Tema.destaque }]} numberOfLines={1}>
+                    <View style={estilos.infoCompactaTextos}>
+                        <Text style={[estilos.tituloMusicaCompacto, ehAtual && { color: Tema.destaque }]} numberOfLines={1}>
                             {item.titulo}
                         </Text>
-                        <Text style={estilos.artistaMusica} numberOfLines={1}>
-                            {item.artista}
-                        </Text>
-                        <View style={estilos.rodapeMusica}>
+                        <View style={estilos.subtituloCompactoContainer}>
                             <View style={[
-                                estilos.badgePlataforma,
+                                estilos.badgePlataformaMini,
                                 { backgroundColor: corFonte + '33' }
                             ]}>
                                 {fonte === 'soundcloud' && (
-                                    <Ionicons name="logo-soundcloud" size={12} color={corFonte} style={{ marginRight: 4 }} />
+                                    <Ionicons name="logo-soundcloud" size={10} color={corFonte} style={{ marginRight: 2 }} />
                                 )}
                                 {fonte === 'youtube' && (
-                                    <Ionicons name="logo-youtube" size={12} color={corFonte} style={{ marginRight: 4 }} />
+                                    <Ionicons name="logo-youtube" size={10} color={corFonte} style={{ marginRight: 2 }} />
                                 )}
-                                <Text style={[estilos.textoBadge, { color: corFonte }]}>
+                                <Text style={[estilos.textoBadgeMini, { color: corFonte }]}>
                                     {item.source.toUpperCase()}
                                 </Text>
                             </View>
-                            {item.duracao > 0 && (
-                                <Text style={estilos.duracaoMusica}>
-                                    {formatarDuracao(item.duracao)}
-                                </Text>
-                            )}
+                            <Text style={estilos.artistaMusicaCompacto} numberOfLines={1}>
+                                {item.artista}
+                            </Text>
                         </View>
                     </View>
-
-                    {carregandoEsta && (
-                        <ActivityIndicator size="small" color={Tema.destaque} style={{ marginLeft: 4 }} />
-                    )}
                 </TouchableOpacity>
 
-                {/* Separador com cor da plataforma */}
-                <View style={[estilos.separadorFonte, { backgroundColor: corFonte + '55' }]} />
-
-                {/* 4 botões de ação */}
-                <View style={estilos.botoesAcao}>
-                    {/* 1. Tocar / Pausar */}
+                <View style={estilos.musicaCompactaAcoes}>
+                    {carregandoEsta && (
+                        <ActivityIndicator size="small" color={Tema.destaque} style={{ marginRight: 12 }} />
+                    )}
+                    {tocandoEsta && !carregandoEsta && (
+                        <Ionicons name="stats-chart" size={16} color={Tema.destaque} style={{ marginRight: 12 }} />
+                    )}
+                    
                     <TouchableOpacity
-                        style={[estilos.botaoAcao, tocandoEsta && { backgroundColor: Tema.destaque + '18' }]}
-                        onPress={() => aoTocar(item)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons
-                            name={tocandoEsta ? 'pause-circle' : 'play-circle'}
-                            size={22}
-                            color={ehAtual ? Tema.destaque : Tema.textoSecundario}
-                        />
-                        <Text style={[estilos.labelBotaoAcao, ehAtual && { color: Tema.destaque }]}>
-                            {tocandoEsta ? 'Pausar' : 'Tocar'}
-                        </Text>
-                    </TouchableOpacity>
-
-                    {/* 2. Próxima na fila */}
-                    <TouchableOpacity
-                        style={estilos.botaoAcao}
-                        onPress={() => adicionarAFila(item)}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons name="play-skip-forward" size={22} color={Tema.textoSecundario} />
-                        <Text style={estilos.labelBotaoAcao}>Próxima</Text>
-                    </TouchableOpacity>
-
-                    {/* 3. Ação da plataforma */}
-                    <TouchableOpacity
-                        style={estilos.botaoAcao}
-                        onPress={acaoPlatadorma.acao}
-                        activeOpacity={0.7}
-                    >
-                        <Ionicons name={acaoPlatadorma.icone} size={22} color={acaoPlatadorma.cor} />
-                        <Text style={[estilos.labelBotaoAcao, { color: acaoPlatadorma.cor }]}>
-                            {acaoPlatadorma.label}
-                        </Text>
-                    </TouchableOpacity>
-
-                    {/* 4. Curtir */}
-                    <TouchableOpacity
-                        style={[estilos.botaoAcao, curtida && { backgroundColor: '#EC4899' + '18' }]}
+                        style={estilos.botaoAcaoMini}
                         onPress={() => alternarCurtida(item)}
-                        activeOpacity={0.7}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                     >
                         <Ionicons
                             name={curtida ? 'heart' : 'heart-outline'}
                             size={22}
-                            color={curtida ? '#EC4899' : Tema.textoSecundario}
+                            color={curtida ? '#EC4899' : Tema.textoSuave}
                         />
-                        <Text style={[estilos.labelBotaoAcao, curtida && { color: '#EC4899' }]}>
-                            {curtida ? 'Curtido' : 'Curtir'}
-                        </Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                        style={estilos.botaoAcaoMini}
+                        onPress={() => abrirMenu(item)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                        <Ionicons name="ellipsis-vertical" size={20} color={Tema.textoSuave} />
                     </TouchableOpacity>
                 </View>
             </View>
         );
-    }, [faixaAtual, estado, aoTocar, adicionarAFila, alternarCurtida, favoritas]);
+    }, [faixaAtual, estado, aoTocar, abrirMenu, alternarCurtida, favoritas]);
 
     const renderCardArtista = () => {
         if (!melhorArtista) return null;
@@ -747,7 +667,30 @@ export default function TelaBuscar() {
                                         <Ionicons name="chevron-forward" size={16} color={Tema.textoSuave} />
                                     </TouchableOpacity>
 
-                                    {/* Opção 4: Ver artista */}
+                                    {/* Opção 4: Abrir na plataforma */}
+                                    <TouchableOpacity
+                                        style={estilos.menuOpcao}
+                                        onPress={() => {
+                                            fecharMenu();
+                                            const fonte = menuMusica.source.toLowerCase();
+                                            if (fonte === 'soundcloud') Linking.openURL(`https://soundcloud.com/search?q=${encodeURIComponent(menuMusica.titulo)}`);
+                                            else if (fonte === 'youtube') Linking.openURL(`https://youtube.com/watch?v=${menuMusica.id}`);
+                                            else if (fonte === 'audius') Linking.openURL(`https://audius.co`);
+                                            else if (fonte === 'jamendo') Linking.openURL(`https://www.jamendo.com/track/${menuMusica.id}`);
+                                            else if (fonte === 'bandcamp') Linking.openURL(`https://bandcamp.com`);
+                                        }}
+                                    >
+                                        <View style={[estilos.menuIconeWrapper, { backgroundColor: corDaPlataforma(menuMusica.source) + '22' }]}>
+                                            <Ionicons name="open-outline" size={24} color={corDaPlataforma(menuMusica.source)} />
+                                        </View>
+                                        <View style={estilos.menuOpcaoTexto}>
+                                            <Text style={estilos.menuOpcaoLabel}>Abrir na plataforma</Text>
+                                            <Text style={estilos.menuOpcaoDesc}>Ouvir no {menuMusica.source}</Text>
+                                        </View>
+                                        <Ionicons name="chevron-forward" size={16} color={Tema.textoSuave} />
+                                    </TouchableOpacity>
+
+                                    {/* Opção 5: Ver artista */}
                                     <TouchableOpacity
                                         style={estilos.menuOpcao}
                                         onPress={() => {
@@ -948,96 +891,72 @@ const estilos = StyleSheet.create({
         color: '#B91C1C',
         fontSize: 14,
     },
-    cardMusica: {
-        backgroundColor: Tema.superficie,
-        borderRadius: 12,
-        marginBottom: 10,
-        borderWidth: 1,
-        borderColor: Tema.borda,
-        overflow: 'hidden',
-    },
-    cardMusicaAtivo: {
-        borderColor: Tema.destaque + '66',
-        backgroundColor: Tema.superficieClara,
-    },
-    linhaMusica: {
+    musicaCompacta: {
         flexDirection: 'row',
         alignItems: 'center',
-        padding: 12,
+        paddingVertical: 10,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        marginBottom: 8,
+        backgroundColor: Tema.superficie,
+        borderWidth: 1,
+        borderColor: Tema.borda,
+    },
+    musicaCompactaAtiva: {
+        backgroundColor: Tema.superficieClara,
+        borderColor: Tema.destaque + '66',
+    },
+    musicaCompactaInfo: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
         gap: 12,
     },
-    linhaMusicaAtiva: {
-        backgroundColor: Tema.superficie,
-    },
-    capa: {
+    capaCompacta: {
         width: 48,
         height: 48,
-        borderRadius: 4,
+        borderRadius: 6,
         backgroundColor: Tema.superficieClara,
     },
-    capaPlaceholder: {
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    infoMusica: {
+    infoCompactaTextos: {
         flex: 1,
         justifyContent: 'center',
     },
-    tituloMusica: {
+    tituloMusicaCompacto: {
         color: Tema.texto,
-        fontSize: 16,
-        fontWeight: '500',
+        fontSize: 15,
+        fontWeight: '600',
     },
-    artistaMusica: {
-        color: Tema.textoSecundario,
-        fontSize: 14,
-        marginTop: 4,
-    },
-    rodapeMusica: {
+    subtituloCompactoContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
-        marginTop: 6,
+        marginTop: 4,
+        gap: 6,
     },
-    badgePlataforma: {
+    artistaMusicaCompacto: {
+        color: Tema.textoSecundario,
+        fontSize: 13,
+        flex: 1,
+    },
+    badgePlataformaMini: {
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 4,
         flexDirection: 'row',
         alignItems: 'center',
     },
-    textoBadge: {
+    textoBadgeMini: {
         fontSize: 9,
         fontWeight: '700',
         letterSpacing: 0.5,
     },
-    duracaoMusica: {
-        color: Tema.textoSuave,
-        fontSize: 12,
-    },
-    iconePlay: {
-        width: 40,
-        alignItems: 'center',
-    },
-    separadorFonte: {
-        height: 2,
-    },
-    botoesAcao: {
+    musicaCompactaAcoes: {
         flexDirection: 'row',
-    },
-    botaoAcao: {
-        flex: 1,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 10,
-        gap: 4,
-        borderRadius: 0,
+        gap: 8,
     },
-    labelBotaoAcao: {
-        color: Tema.textoSuave,
-        fontSize: 10,
-        fontWeight: '600',
-        letterSpacing: 0.2,
+    botaoAcaoMini: {
+        padding: 4,
     },
     vazio: {
         color: Tema.textoSuave,
@@ -1145,6 +1064,23 @@ const estilos = StyleSheet.create({
     menuCapaPlaceholder: {
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    capaPlaceholder: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: Tema.superficieClara,
+    },
+    badgePlataforma: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 6,
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    textoBadge: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 0.5,
     },
     menuTitulo: {
         color: Tema.texto,

@@ -71,6 +71,10 @@ export default function LayoutAplicativo() {
                 }}
             />
             <Tabs.Screen
+                name="biblioteca/favoritas"
+                options={{ href: null }}
+            />
+            <Tabs.Screen
                 name="artista/[nome]"
                 options={{ href: null }}
             />

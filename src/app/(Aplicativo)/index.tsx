@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import {
-    Alert,
+    ActivityIndicator,
+    Modal,
     SafeAreaView,
     ScrollView,
     StyleSheet,
@@ -18,59 +19,145 @@ export default function TelaConfiguracoes() {
     const { usuario, sair } = useAutenticacao();
     const { parar } = usePlayer();
     const router = useRouter();
+    const [modalSair, setModalSair] = useState(false);
+    const [saindo, setSaindo] = useState(false);
 
-    const handleSair = () => {
-        Alert.alert(
-            'Encerrar Sessão',
-            'Tem certeza que deseja encerrar sua sessão?',
-            [
-                { text: 'Cancelar', style: 'cancel' },
-                { 
-                    text: 'Sair', 
-                    style: 'destructive',
-                    onPress: async () => {
-                        parar();
-                        await sair();
-                        router.replace('/(Autenticacao)/entrar');
-                    }
-                },
-            ]
-        );
+    const confirmarSair = async () => {
+        setSaindo(true);
+        try {
+            parar();
+            await sair();
+            setModalSair(false);
+            router.replace('/(Autenticacao)/entrar');
+        } catch {
+            setSaindo(false);
+            setModalSair(false);
+        }
     };
+
+    const nomeExibido = usuario?.user_metadata?.full_name
+        || usuario?.user_metadata?.display_name
+        || 'Usuário';
+    const iniciais = nomeExibido
+        .split(' ')
+        .slice(0, 2)
+        .map((p: string) => p[0]?.toUpperCase() ?? '')
+        .join('');
 
     return (
         <SafeAreaView style={estilos.container}>
             <ScrollView contentContainerStyle={estilos.rolagem} showsVerticalScrollIndicator={false}>
+
+                {/* Cabeçalho */}
                 <View style={estilos.cabecalho}>
                     <Text style={estilos.titulo}>Configurações</Text>
                 </View>
 
+                {/* Perfil */}
                 <View style={estilos.secao}>
                     <Text style={estilos.subtitulo}>Sua Conta</Text>
                     <View style={estilos.cartaoPerfil}>
                         <View style={estilos.avatar}>
-                            <Ionicons name="person" size={32} color={Tema.texto} />
+                            <Text style={estilos.iniciaisAvatar}>{iniciais || '?'}</Text>
                         </View>
                         <View style={estilos.infoPerfil}>
-                            <Text style={estilos.nomeUsuario}>
-                                {usuario?.user_metadata?.full_name || 'Usuário'}
-                            </Text>
-                            <Text style={estilos.emailUsuario}>{usuario?.email}</Text>
+                            <Text style={estilos.nomeUsuario} numberOfLines={1}>{nomeExibido}</Text>
+                            <Text style={estilos.emailUsuario} numberOfLines={1}>{usuario?.email}</Text>
+                        </View>
+                        <View style={[estilos.badgeAtivo]}>
+                            <Text style={estilos.textoBadgeAtivo}>Ativo</Text>
                         </View>
                     </View>
                 </View>
 
+                {/* Conta */}
                 <View style={estilos.secao}>
                     <Text style={estilos.subtitulo}>Conta</Text>
-                    <TouchableOpacity style={estilos.itemMenu} onPress={handleSair}>
-                        <View style={[estilos.iconeContainerMenu, { backgroundColor: Tema.erro + '22' }]}>
-                            <Ionicons name="log-out-outline" size={22} color={Tema.erro} />
-                        </View>
-                        <Text style={[estilos.textoMenu, { color: Tema.erro }]}>Encerrar sessão</Text>
-                        <Ionicons name="chevron-forward" size={20} color={Tema.textoSuave} />
-                    </TouchableOpacity>
+                    <View style={estilos.grupo}>
+                        <TouchableOpacity
+                            style={estilos.itemMenu}
+                            onPress={() => router.push('/(Autenticacao)/senha')}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[estilos.iconeContainer, { backgroundColor: '#6366F1' + '22' }]}>
+                                <Ionicons name="lock-closed-outline" size={20} color="#6366F1" />
+                            </View>
+                            <View style={estilos.itemTexto}>
+                                <Text style={estilos.textoMenu}>Alterar senha</Text>
+                                <Text style={estilos.textoMenuDesc}>Enviar link de redefinição por email</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={Tema.textoSuave} />
+                        </TouchableOpacity>
+
+                        <View style={estilos.divisor} />
+
+                        <TouchableOpacity
+                            style={estilos.itemMenu}
+                            onPress={() => setModalSair(true)}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[estilos.iconeContainer, { backgroundColor: Tema.erro + '22' }]}>
+                                <Ionicons name="log-out-outline" size={20} color={Tema.erro} />
+                            </View>
+                            <View style={estilos.itemTexto}>
+                                <Text style={[estilos.textoMenu, { color: Tema.erro }]}>Encerrar sessão</Text>
+                                <Text style={estilos.textoMenuDesc}>Sair da sua conta no dispositivo</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={Tema.textoSuave} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
+
+                {/* Versão */}
+                <Text style={estilos.versao}>Vibesom • v1.0.0</Text>
             </ScrollView>
+
+            {/* Modal de confirmação de logout */}
+            <Modal
+                visible={modalSair}
+                transparent
+                animationType="fade"
+                onRequestClose={() => !saindo && setModalSair(false)}
+            >
+                <TouchableOpacity
+                    style={estilos.overlay}
+                    activeOpacity={1}
+                    onPress={() => !saindo && setModalSair(false)}
+                >
+                    <View style={estilos.modalContainer}>
+                        <View style={estilos.modalIcone}>
+                            <Ionicons name="log-out-outline" size={32} color={Tema.erro} />
+                        </View>
+
+                        <Text style={estilos.modalTitulo}>Encerrar sessão?</Text>
+                        <Text style={estilos.modalDesc}>
+                            Você será desconectado da sua conta neste dispositivo.
+                        </Text>
+
+                        <TouchableOpacity
+                            style={estilos.botaoSair}
+                            onPress={confirmarSair}
+                            disabled={saindo}
+                            activeOpacity={0.85}
+                        >
+                            {saindo ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <Text style={estilos.textoBotaoSair}>Encerrar sessão</Text>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={estilos.botaoCancelar}
+                            onPress={() => setModalSair(false)}
+                            disabled={saindo}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={estilos.textoBotaoCancelar}>Cancelar</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 }
@@ -86,7 +173,7 @@ const estilos = StyleSheet.create({
     cabecalho: {
         paddingHorizontal: 24,
         paddingTop: 20,
-        marginBottom: 30,
+        marginBottom: 28,
     },
     titulo: {
         fontSize: 28,
@@ -94,15 +181,15 @@ const estilos = StyleSheet.create({
         color: Tema.texto,
     },
     secao: {
-        marginBottom: 30,
+        marginBottom: 28,
         paddingHorizontal: 24,
     },
     subtitulo: {
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: '700',
         color: Tema.textoSuave,
         textTransform: 'uppercase',
-        letterSpacing: 1.2,
+        letterSpacing: 1.4,
         marginBottom: 12,
         marginLeft: 4,
     },
@@ -112,49 +199,155 @@ const estilos = StyleSheet.create({
         backgroundColor: Tema.superficie,
         padding: 16,
         borderRadius: 20,
-        gap: 16,
+        gap: 14,
         borderWidth: 1,
         borderColor: Tema.borda,
     },
     avatar: {
-        width: 60,
-        height: 60,
-        borderRadius: 30,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         backgroundColor: Tema.destaque,
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    iniciaisAvatar: {
+        color: '#fff',
+        fontSize: 20,
+        fontWeight: '800',
     },
     infoPerfil: {
         flex: 1,
     },
     nomeUsuario: {
-        fontSize: 18,
+        fontSize: 17,
         fontWeight: '700',
         color: Tema.texto,
     },
     emailUsuario: {
-        fontSize: 14,
+        fontSize: 13,
         color: Tema.textoSecundario,
+        marginTop: 2,
+    },
+    badgeAtivo: {
+        backgroundColor: '#22C55E22',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 20,
+    },
+    textoBadgeAtivo: {
+        color: '#22C55E',
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    grupo: {
+        backgroundColor: Tema.superficie,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: Tema.borda,
+        overflow: 'hidden',
     },
     itemMenu: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: Tema.superficie,
-        padding: 12,
-        borderRadius: 16,
+        padding: 14,
         gap: 12,
-        borderWidth: 1,
-        borderColor: Tema.borda,
     },
-    iconeContainerMenu: {
+    iconeContainer: {
         width: 40,
         height: 40,
         borderRadius: 12,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    textoMenu: {
+    itemTexto: {
         flex: 1,
+    },
+    textoMenu: {
+        fontSize: 15,
+        fontWeight: '600',
+        color: Tema.texto,
+    },
+    textoMenuDesc: {
+        fontSize: 12,
+        color: Tema.textoSuave,
+        marginTop: 2,
+    },
+    divisor: {
+        height: 1,
+        backgroundColor: Tema.borda,
+        marginLeft: 66,
+    },
+    versao: {
+        textAlign: 'center',
+        color: Tema.textoSuave,
+        fontSize: 12,
+        marginTop: 8,
+    },
+    // Modal
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.65)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 24,
+    },
+    modalContainer: {
+        backgroundColor: Tema.superficie,
+        borderRadius: 24,
+        padding: 28,
+        width: '100%',
+        alignItems: 'center',
+        borderWidth: 1,
+        borderColor: Tema.borda,
+    },
+    modalIcone: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: Tema.erro + '18',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 16,
+    },
+    modalTitulo: {
+        fontSize: 20,
+        fontWeight: '800',
+        color: Tema.texto,
+        marginBottom: 8,
+        textAlign: 'center',
+    },
+    modalDesc: {
+        fontSize: 14,
+        color: Tema.textoSecundario,
+        textAlign: 'center',
+        lineHeight: 21,
+        marginBottom: 28,
+    },
+    botaoSair: {
+        width: '100%',
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: Tema.erro,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 10,
+    },
+    textoBotaoSair: {
+        color: '#fff',
+        fontSize: 16,
+        fontWeight: '700',
+    },
+    botaoCancelar: {
+        width: '100%',
+        height: 50,
+        borderRadius: 14,
+        backgroundColor: Tema.superficieClara,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    textoBotaoCancelar: {
+        color: Tema.texto,
         fontSize: 16,
         fontWeight: '600',
     },

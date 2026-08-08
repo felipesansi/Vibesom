@@ -26,6 +26,8 @@ type ItemPlaylist = {
     titulo: string;
     descricao: string;
     cor: string;
+    rota?: string;
+    icone?: keyof typeof Ionicons.glyphMap;
 };
 
 const RECENTES: ItemRecente[] = [
@@ -36,7 +38,7 @@ const RECENTES: ItemRecente[] = [
 ];
 
 const PLAYLISTS: ItemPlaylist[] = [
-    { id: 'favoritas', titulo: 'Favoritas', descricao: 'Músicas que você curtiu', cor: '#EC4899' },
+    { id: 'fav', titulo: 'Músicas Curtidas', descricao: 'Suas faixas favoritas', cor: '#E11D48', rota: '/(Aplicativo)/biblioteca/favoritas', icone: 'heart' },
     { id: '1', titulo: 'Descobertas', descricao: 'Novos sons toda semana', cor: '#6366F1' },
     { id: '2', titulo: 'Para treinar', descricao: 'Energia alta', cor: '#F59E0B' },
     { id: '3', titulo: 'Acústico', descricao: 'Voz e violão', cor: '#14B8A6' },
@@ -57,7 +59,9 @@ export default function TelaInicio() {
     const nome =
         usuario?.user_metadata?.full_name ||
         usuario?.user_metadata?.display_name ||
-        'ouvinte';
+        usuario?.user_metadata?.name ||
+        (usuario?.email ? usuario.email.split('@')[0] : null) ||
+        'Ouvinte';
 
     const primeiroNome = String(nome).split(' ')[0];
     const filtros = ['Para você', 'Novidades', 'Relax', 'Treino'];
@@ -73,11 +77,11 @@ export default function TelaInicio() {
     }, [router]);
 
     const handlePlaylistPress = useCallback((item: ItemPlaylist) => {
-        if (item.id === 'favoritas') {
-            router.push('/biblioteca');
-            return;
+        if (item.rota) {
+            router.push(item.rota as any);
+        } else {
+            router.push('/(Aplicativo)/buscar');
         }
-        router.push('/(Aplicativo)/buscar');
     }, [router]);
 
     const handlePlayPause = useCallback(() => {
@@ -162,7 +166,7 @@ export default function TelaInicio() {
                 {PLAYLISTS.map((item) => (
                     <TouchableOpacity key={item.id} style={estilos.linhaPlaylist} onPress={() => handlePlaylistPress(item)}>
                         <View style={[estilos.capaPlaylist, { backgroundColor: item.cor }]}>
-                            <Ionicons name="albums" size={22} color={Tema.texto} />
+                            <Ionicons name={item.icone || 'albums'} size={22} color={Tema.texto} />
                         </View>
                         <View style={estilos.infoPlaylist}>
                             <Text style={estilos.tituloPlaylist}>{item.titulo}</Text>

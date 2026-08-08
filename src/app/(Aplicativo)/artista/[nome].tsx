@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
     ScrollView,
@@ -25,6 +26,12 @@ import {
     pesquisarAlbums,
     pesquisarMusicasPorArtista,
 } from '../../../lib/apiMusica';
+import {
+    buscarMusicasDaPlaylist,
+    buscarPlaylistFavoritasDoUsuario,
+    removerMusicaFavorita,
+    salvarMusicaFavorita,
+} from '../../../lib/supabase';
 
 function ehSingle(album: Album): boolean {
     const tipo = (album.tipo ?? '').toLowerCase();
@@ -76,36 +83,38 @@ export default function TelaArtista() {
         return () => controlador.abort();
     }, [idOuNome, nomeArtista, usaMusicBrainz]);
 
-    useEffect(() => {
-        if (!usuario?.id) {
-            setFavoritas(new Set());
-            return;
-        }
-
-        let ativo = true;
-        setCarregandoFavoritos(true);
-
-        (async () => {
-            try {
-                const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
-                if (!ativo) return;
-                if (!playlistId) {
-                    setFavoritas(new Set());
-                    return;
-                }
-
-                const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
-                if (!ativo) return;
-                setFavoritas(new Set(musicasFavoritas.map((musica) => `${musica.source}:${musica.id}`)));
-            } catch (erro) {
-                console.warn('[Artista] falha ao carregar favoritas:', erro);
-            } finally {
-                if (ativo) setCarregandoFavoritos(false);
+    useFocusEffect(
+        useCallback(() => {
+            if (!usuario?.id) {
+                setFavoritas(new Set());
+                return;
             }
-        })();
 
-        return () => { ativo = false; };
-    }, [usuario?.id]);
+            let ativo = true;
+            setCarregandoFavoritos(true);
+
+            (async () => {
+                try {
+                    const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                    if (!ativo) return;
+                    if (!playlistId) {
+                        setFavoritas(new Set());
+                        return;
+                    }
+
+                    const musicasFavoritas = await buscarMusicasDaPlaylist(playlistId);
+                    if (!ativo) return;
+                    setFavoritas(new Set(musicasFavoritas.map((musica: Musica) => `${musica.source}:${musica.id}`)));
+                } catch (erro) {
+                    console.warn('[Artista] falha ao carregar favoritas:', erro);
+                } finally {
+                    if (ativo) setCarregandoFavoritos(false);
+                }
+            })();
+
+            return () => { ativo = false; };
+        }, [usuario?.id])
+    );
 
     const { discos, singles } = useMemo(() => ({
         discos: albuns.filter(album => !ehSingle(album)),
