@@ -97,7 +97,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             if (!url) {
                 try {
                     // O resolver busca a melhor fonte de áudio na API (pode ser YouTube, SC, etc.)
-                    const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                    const resolucao = await resolverAudio(musica.artista, musica.titulo, undefined, musica.source); // Passa a fonte da música
                     url = urlStreamCompleta(resolucao.url);
                 } catch (err) {
                     const mensagem = 'Áudio não encontrado para esta música nas plataformas.';
@@ -254,7 +254,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         try {
             player.setActiveForLockScreen(false);
         } catch (_) {
-            try { player.clearLockScreenControls(); } catch (_) {}
+            try { player.clearLockScreenControls(); } catch (_) { }
         }
         setFaixaAtual(null);
     }, [player]);

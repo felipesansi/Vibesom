@@ -259,7 +259,7 @@ export async function pesquisarMusicasPorArtista(
             : [];
 
     return musicas.filter(
-            (musica) => musica.artista && musica.artista.toLowerCase() === artistaLimpo.toLowerCase()
+        (musica) => musica.artista && musica.artista.toLowerCase() === artistaLimpo.toLowerCase()
     );
 }
 
@@ -472,8 +472,16 @@ export async function buscarMusicasMB(artistaId: string, signal?: AbortSignal, a
     }
 }
 
-export async function resolverAudio(artista: string, faixa: string, signal?: AbortSignal): Promise<{ source: string, url: string, titulo: string }> {
+export async function resolverAudio(
+    artista: string,
+    faixa: string,
+    signal?: AbortSignal,
+    source?: string // Adicionado parâmetro opcional para a fonte
+): Promise<{ source: string, url: string, titulo: string }> {
     const params = new URLSearchParams({ artista, faixa });
+    if (source?.toLowerCase() === 'youtube') {
+        params.append('youtubeVersion', 'v2'); // Adiciona a opção youtube-v2 se a fonte for YouTube
+    }
     const url = `${URL_BASE}/resolver?${params.toString()}`;
 
     let resposta: Response;
