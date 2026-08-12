@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -31,6 +31,7 @@ export default function Favoritas() {
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
     const [musicaEscolhida, setMusicaEscolhida] = useState<Musica | null>(null);
+    const playlistFavoritasIdRef = useRef<string | null>(null);
 
     const carregarFavoritas = useCallback(async () => {
         if (!usuario?.id) {
@@ -43,7 +44,11 @@ export default function Favoritas() {
         setErro(null);
 
         try {
-            const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+            let playlistId = playlistFavoritasIdRef.current;
+            if (!playlistId) {
+                playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                playlistFavoritasIdRef.current = playlistId;
+            }
             if (!playlistId) {
                 setMusicas([]);
                 return;
@@ -160,6 +165,9 @@ export default function Favoritas() {
                     ListHeaderComponent={cabecalho}
                     ListEmptyComponent={<Text style={estilos.vazio}>Nenhuma música curtida ainda.</Text>}
                     contentContainerStyle={estilos.rolagem}
+                    initialNumToRender={10}
+                    windowSize={7}
+                    removeClippedSubviews
                 />
             )}
             <SeletorFonteAudio 

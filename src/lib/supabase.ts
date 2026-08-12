@@ -140,7 +140,7 @@ export async function criarOuAtualizarPerfilUsuario(
             : null;
 
     const { error } = await supabase
-        .from<PerfilUsuario>('perfis_usuarios')
+        .from('perfis_usuarios')
         .upsert({
             id: usuarioId,
             nome_usuario: nomeUsuario,
@@ -213,7 +213,7 @@ export async function salvarMusicaFavorita(
 
         const playlistNome = 'Favoritas';
         const { data: playlistsExistentes, error: erroPlaylist } = await supabase
-            .from<PlaylistDB>('playlists')
+            .from('playlists')
             .select('id')
             .eq('usuario_id', usuario.id)
             .eq('nome', playlistNome)
@@ -226,7 +226,7 @@ export async function salvarMusicaFavorita(
         let playlistId = playlistsExistentes?.id;
         if (!playlistId) {
             const { data: novaPlaylist, error: erroCriar } = await supabase
-                .from<PlaylistDB>('playlists')
+                .from('playlists')
                 .insert({
                     usuario_id: usuario.id,
                     nome: playlistNome,
@@ -238,7 +238,7 @@ export async function salvarMusicaFavorita(
             if (erroCriar || !novaPlaylist) {
                 return { erro: erroCriar?.message ?? 'Não foi possível criar a playlist de favoritas.' };
             }
-            playlistId = novaPlaylist.id;
+            playlistId = (novaPlaylist as PlaylistDB).id;
         }
 
         const { error: erroInserir } = await supabase
@@ -264,7 +264,7 @@ export async function buscarPlaylistsDoUsuario(
     usuarioId: string,
 ): Promise<PlaylistDB[]> {
     const { data, error } = await supabase
-        .from<PlaylistDB>('playlists')
+        .from('playlists')
         .select('*')
         .eq('usuario_id', usuarioId)
         .order('criado_em', { ascending: false });
@@ -280,7 +280,7 @@ export async function criarPlaylist(
     ePublica?: boolean,
 ): Promise<{ data?: PlaylistDB; erro: string | null }> {
     const { data, error } = await supabase
-        .from<PlaylistDB>('playlists')
+        .from('playlists')
         .insert({
             usuario_id: usuarioId,
             nome,
@@ -315,7 +315,7 @@ export async function buscarMusicasDaPlaylist(
 ): Promise<Musica[]> {
     const { data, error } = await supabase
         .from('playlist_musicas')
-        .select('musicas(*)')
+        .select('musicas(id, source, titulo, artista, capa_url, duracao_segundos, stream_url, id_original_midia)')
         .eq('playlist_id', playlistId)
         .order('posicao', { ascending: true });
 
@@ -343,7 +343,7 @@ export async function buscarPlaylistFavoritasDoUsuario(
     usuarioId: string,
 ): Promise<string | null> {
     const { data, error } = await supabase
-        .from<PlaylistDB>('playlists')
+        .from('playlists')
         .select('id')
         .eq('usuario_id', usuarioId)
         .eq('nome', 'Favoritas')
