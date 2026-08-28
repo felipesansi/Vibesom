@@ -1,7 +1,7 @@
 import { createClient, type User } from '@supabase/supabase-js';
 import { Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
-import type { Musica } from './apiMusica';
+import type { Artista, Musica } from './apiMusica';
 
 // Adaptador de armazenamento: SecureStore no nativo, localStorage na web/SSR
 let adaptadorArmazenamento: {
@@ -387,4 +387,146 @@ export async function removerMusicaFavorita(
         console.error('[Supabase] removerMusicaFavorita', erro);
         return { erro: erro instanceof Error ? erro.message : 'Erro desconhecido' };
     }
+}
+
+export type ArtistaSeguidoDB = {
+    id?: string;
+    usuario_id: string;
+    artista_id: string;
+    nome: string;
+    capa_url: string | null;
+    source: string;
+    inscritos?: string | null;
+    criado_em?: string;
+};
+
+export async function buscarArtistasSeguidosDoUsuario(
+    usuarioId: string
+): Promise<Artista[]> {
+    if (!usuarioId) return [];
+
+    let artistasLocais: Artista[] = [];
+    try {
+        const raw = await adaptadorArmazenamento.getItem(`vibesom_artistas_seguidos_${usuarioId}`);
+        if (raw) {
+            artistasLocais = JSON.parse(raw);
+        }
+    } catch (e) {
+        console.warn('[Supabase] Erro ao ler artistas seguidos locais:', e);
+    }
+
+    try {
+        const { data, error } = await supabase
+            .from('artistas_seguidos')
+            .select('*')
+            .eq('usuario_id', usuarioId)
+            .order('criado_em', { ascending: false });
+
+        if (!error && Array.isArray(data)) {
+            const artistasRemotos: Artista[] = data.map((item: any) => ({
+                id: item.artista_id,
+                nome: item.nome,
+                capa: item.capa_url,
+                source: item.source || 'MusicBrainz',
+                inscritos: item.inscritos ? String(item.inscritos) : undefined,
+            }));
+
+            // Atualiza cache local
+            await adaptadorArmazenamento.setItem(
+                `vibesom_artistas_seguidos_${usuarioId}`,
+                JSON.stringify(artistasRemotos)
+            );
+            return artistasRemotos;
+        }
+    } catch (e) {
+        console.warn('[Supabase] Falha ao consultar artistas_seguidos no servidor, usando local:', e);
+    }
+
+    return artistasLocais;
+}
+
+export async function seguirArtista(
+    usuario: User,
+    artista: Artista
+): Promise<{ erro: string | null }> {
+    if (!usuario?.id) return { erro: 'Usuário não autenticado.' };
+    const usuarioId = usuario.id;
+
+    try {
+        const listaAtual = await buscarArtistasSeguidosDoUsuario(usuarioId);
+        const jaExiste = listaAtual.some(
+            a => a.id === artista.id && a.source === artista.source
+        );
+
+        if (!jaExiste) {
+            const novaLista = [artista, ...listaAtual];
+            await adaptadorArmazenamento.setItem(
+                `vibesom_artistas_seguidos_${usuarioId}`,
+                JSON.stringify(novaLista)
+            );
+        }
+
+        try {
+            await supabase
+                .from('artistas_seguidos')
+                .upsert({
+                    usuario_id: usuarioId,
+                    artista_id: artista.id,
+                    nome: artista.nome,
+                    capa_url: artista.capa,
+                    source: artista.source,
+                    inscritos: artista.inscritos ?? null,
+                }, { onConflict: 'usuario_id,artista_id,source' });
+        } catch {
+            // Segue com sucesso se sincronizado localmente
+        }
+
+        return { erro: null };
+    } catch (e) {
+        return { erro: e instanceof Error ? e.message : 'Erro ao seguir artista' };
+    }
+}
+
+export async function deixarDeSeguirArtista(
+    usuarioId: string,
+    artistaId: string,
+    source: string
+): Promise<{ erro: string | null }> {
+    if (!usuarioId) return { erro: 'Usuário não autenticado.' };
+
+    try {
+        const listaAtual = await buscarArtistasSeguidosDoUsuario(usuarioId);
+        const novaLista = listaAtual.filter(
+            a => !(a.id === artistaId && a.source === source)
+        );
+        await adaptadorArmazenamento.setItem(
+            `vibesom_artistas_seguidos_${usuarioId}`,
+            JSON.stringify(novaLista)
+        );
+
+        try {
+            await supabase
+                .from('artistas_seguidos')
+                .delete()
+                .eq('usuario_id', usuarioId)
+                .eq('artista_id', artistaId)
+                .eq('source', source);
+        } catch {
+            // Segue com sucesso local
+        }
+
+        return { erro: null };
+    } catch (e) {
+        return { erro: e instanceof Error ? e.message : 'Erro ao deixar de seguir' };
+    }
+}
+
+export async function verificarArtistaSeguido(
+    usuarioId: string,
+    artistaId: string,
+    source?: string
+): Promise<boolean> {
+    if (!usuarioId) return false;
+    const lista = await buscarArtistasSeguidosDoUsuario(usuarioId);
+    return lista.some(a => (a.id === artistaId || a.nome.toLowerCase() === artistaId.toLowerCase()) && (!source || a.source === source));
 }

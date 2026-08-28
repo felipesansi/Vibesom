@@ -78,6 +78,21 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         }
     }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual, erroMsg]);
 
+    // Alguns provedores encerram a conexão sem propagar um erro nativo. Evita
+    // que a interface fique carregando indefinidamente nesses casos.
+    useEffect(() => {
+        if (!faixaAtual || estado !== 'carregando') return;
+
+        const limite = setTimeout(() => {
+            const mensagem = 'A reprodução demorou demais para iniciar. Tente outra música.';
+            setErroMsg(mensagem);
+            setEstado('erro');
+            Alert.alert('Não foi possível reproduzir', mensagem);
+        }, 20_000);
+
+        return () => clearTimeout(limite);
+    }, [faixaAtual?.id, faixaAtual?.source, estado]);
+
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
         try {
             setEstado('carregando');
@@ -90,36 +105,32 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setIndiceAtual(index);
             setFaixaAtual(musica);
 
-            let url = musica.streamUrl ? urlStreamCompleta(musica.streamUrl) : '';
-
-            // Se a música não tiver uma URL de stream direta, usa a API para resolver.
-            // Isso centraliza a lógica de busca de áudio no backend.
-            if (!url) {
-                try {
-                    // O resolver busca a melhor fonte de áudio na API (pode ser YouTube, SC, etc.)
-                    const resolucao = await resolverAudio(musica.artista, musica.titulo, undefined, musica.source); // Passa a fonte da música
-                    url = urlStreamCompleta(resolucao.url);
-                } catch (err) {
-                    const mensagem = 'Áudio não encontrado para esta música nas plataformas.';
-                    setErroMsg(mensagem);
-                    setEstado('erro');
-                    Alert.alert('Erro ao carregar música', mensagem);
-                    return;
-                }
+            // A escolha e o fallback entre provedores pertencem à API. Não
+            // restringimos a fonte recebida na busca (por exemplo, Piped).
+            let url = '';
+            try {
+                const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
+            } catch (erroResolucao) {
+                console.warn('[Player] API não encontrou uma fonte de áudio:', erroResolucao);
+                const mensagem = 'Áudio não disponível para esta música no momento.';
+                setErroMsg(mensagem);
+                setEstado('erro');
+                Alert.alert('Não foi possível reproduzir', mensagem);
+                return;
             }
 
             if (!url) {
-                const mensagem = 'URL de áudio inválida.';
+                const mensagem = 'Não encontramos uma fonte de áudio válida para esta faixa.';
                 setErroMsg(mensagem);
                 setEstado('erro');
-                Alert.alert('Erro ao carregar música', mensagem);
+                Alert.alert('Erro na reprodução', mensagem);
                 return;
             }
 
             player.replace(url);
 
-            // Registra a sessão de mídia antes de iniciar a faixa. Isso cria a
-            // notificação/controle do sistema no Android e a tela bloqueada no iOS.
+            // Registra a sessão de mídia antes de iniciar a faixa.
             try {
                 player.setActiveForLockScreen(true, {
                     title: musica.titulo,
@@ -137,10 +148,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             player.play();
         } catch (e) {
             console.error('[Player] Erro ao tocar:', e);
-            const mensagem = 'Não foi possível carregar o áudio desta música.';
+            const mensagem = 'Ocorreu uma falha ao iniciar a reprodução. Tente novamente.';
             setErroMsg(mensagem);
             setEstado('erro');
-            Alert.alert('Erro ao carregar música', mensagem);
+            Alert.alert('Erro ao carregar áudio', mensagem);
         }
     }, [player, lista, setEstado, setErroMsg, setLista, setIndiceAtual, setFaixaAtual]);
 

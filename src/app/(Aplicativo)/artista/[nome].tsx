@@ -19,12 +19,16 @@ import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import {
     Album,
+    Artista,
+    artistaEstaSendoSeguido,
     buscarAlbunsMB,
     buscarMusicasMB,
     formatarDuracao,
     Musica,
+    deixarDeSeguirArtistaNaApi,
     pesquisarAlbums,
     pesquisarMusicasPorArtista,
+    seguirArtistaNaApi,
 } from '../../../lib/apiMusica';
 import {
     buscarMusicasDaPlaylist,
@@ -52,8 +56,10 @@ export default function TelaArtista() {
     const [musicaEscolhida, setMusicaEscolhida] = useState<Musica | null>(null);
     const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
     const [carregandoFavoritos, setCarregandoFavoritos] = useState(false);
+    const [seguindo, setSeguindo] = useState(false);
+    const [salvandoSeguir, setSalvandoSeguir] = useState(false);
     const { faixaAtual, estado, tocar, pausar, retomar } = usePlayer();
-    const { usuario } = useAutenticacao();
+    const { usuario, sessao } = useAutenticacao();
 
     useEffect(() => {
         if (!idOuNome) {
@@ -85,8 +91,9 @@ export default function TelaArtista() {
 
     useFocusEffect(
         useCallback(() => {
-            if (!usuario?.id) {
+            if (!usuario?.id || !sessao?.access_token) {
                 setFavoritas(new Set());
+                setSeguindo(false);
                 return;
             }
 
@@ -95,8 +102,14 @@ export default function TelaArtista() {
 
             (async () => {
                 try {
-                    const playlistId = await buscarPlaylistFavoritasDoUsuario(usuario.id);
+                    const [playlistId, estaSeguindo] = await Promise.all([
+                        buscarPlaylistFavoritasDoUsuario(usuario.id),
+                        artistaEstaSendoSeguido(idOuNome, sessao.access_token),
+                    ]);
+
                     if (!ativo) return;
+                    setSeguindo(estaSeguindo);
+
                     if (!playlistId) {
                         setFavoritas(new Set());
                         return;
@@ -106,14 +119,14 @@ export default function TelaArtista() {
                     if (!ativo) return;
                     setFavoritas(new Set(musicasFavoritas.map((musica: Musica) => `${musica.source}:${musica.id}`)));
                 } catch (erro) {
-                    console.warn('[Artista] falha ao carregar favoritas:', erro);
+                    console.warn('[Artista] falha ao carregar dados do usuário:', erro);
                 } finally {
                     if (ativo) setCarregandoFavoritos(false);
                 }
             })();
 
             return () => { ativo = false; };
-        }, [usuario?.id])
+        }, [usuario?.id, sessao?.access_token, idOuNome])
     );
 
     const { discos, singles } = useMemo(() => ({
@@ -145,6 +158,38 @@ export default function TelaArtista() {
             },
         } as any);
     }, [idOuNome, router]);
+
+    const alternarSeguir = useCallback(async () => {
+        if (!usuario || !sessao?.access_token) {
+            Alert.alert('Faça login', 'Você precisa entrar para seguir artistas.');
+            return;
+        }
+
+        setSalvandoSeguir(true);
+        // Atualização otimista
+        const estavaSeguindo = seguindo;
+        setSeguindo(!estavaSeguindo);
+
+        const artistaObj: Artista = {
+            id: idOuNome,
+            nome: nomeArtista,
+            capa: params.capa ? decodeURIComponent(params.capa) : undefined,
+            source: params.source ?? 'MusicBrainz',
+        };
+
+        try {
+            const following = estavaSeguindo
+                ? await deixarDeSeguirArtistaNaApi(idOuNome, sessao.access_token)
+                : await seguirArtistaNaApi(artistaObj, sessao.access_token);
+            setSeguindo(following);
+        } catch (erro) {
+            // Reverte em caso de erro
+            setSeguindo(estavaSeguindo);
+            Alert.alert('Erro', erro instanceof Error ? erro.message : 'Não foi possível atualizar este artista.');
+        } finally {
+            setSalvandoSeguir(false);
+        }
+    }, [usuario, sessao?.access_token, seguindo, idOuNome, nomeArtista, params.capa, params.source]);
 
     const alternarCurtida = useCallback(async (musica: Musica) => {
         if (!usuario?.id) {
@@ -223,7 +268,7 @@ export default function TelaArtista() {
         );
     }, [faixaAtual, estado, favoritas, alternarCurtida]);
 
-    const cabecalho = (
+    const cabecalho = useMemo(() => (
         <>
             <View style={estilos.topo}>
                 <TouchableOpacity onPress={() => router.back()} style={estilos.voltar}><Ionicons name="arrow-back" size={24} color={Tema.texto} /></TouchableOpacity>
@@ -235,6 +280,19 @@ export default function TelaArtista() {
                 <Text style={estilos.rotulo}>ARTISTA</Text>
                 <Text style={estilos.nome}>{nomeArtista}</Text>
                 <Text style={estilos.resumo}>{albuns.length} lançamentos · {musicas.length} faixas encontradas</Text>
+                <TouchableOpacity
+                    style={[estilos.botaoSeguir, seguindo && estilos.botaoSeguindo]}
+                    onPress={alternarSeguir}
+                    disabled={salvandoSeguir}
+                    activeOpacity={0.75}
+                >
+                    {salvandoSeguir
+                        ? <ActivityIndicator size="small" color={seguindo ? Tema.destaqueAlt : Tema.fundo} />
+                        : <Text style={[estilos.textoBotaoSeguir, seguindo && estilos.textoBotaoSeguindo]}>
+                            {seguindo ? 'Seguindo' : 'Seguir'}
+                        </Text>
+                    }
+                </TouchableOpacity>
             </View>
 
             {!!discos.length && <View style={estilos.secao}>
@@ -247,7 +305,7 @@ export default function TelaArtista() {
             </View>}
             {!!musicas.length && <Text style={[estilos.tituloSecao, estilos.tituloFaixas]}>Músicas</Text>}
         </>
-    );
+    ), [nomeArtista, albuns, musicas, discos, singles, params.capa, seguindo, salvandoSeguir, alternarSeguir, renderAlbum, router]);
 
     return (
         <SafeAreaView style={estilos.container}>
@@ -326,6 +384,29 @@ const estilos = StyleSheet.create({
         lineHeight: 20,
         textAlign: 'center',
         maxWidth: '85%',
+    },
+    botaoSeguir: {
+        marginTop: 18,
+        paddingHorizontal: 32,
+        paddingVertical: 10,
+        borderRadius: 24,
+        backgroundColor: Tema.destaqueAlt,
+        minWidth: 110,
+        alignItems: 'center',
+    },
+    botaoSeguindo: {
+        backgroundColor: 'transparent',
+        borderWidth: 1.5,
+        borderColor: Tema.destaqueAlt,
+    },
+    textoBotaoSeguir: {
+        color: Tema.fundo,
+        fontSize: 14,
+        fontWeight: '700',
+        letterSpacing: 0.3,
+    },
+    textoBotaoSeguindo: {
+        color: Tema.destaqueAlt,
     },
     secao: {
         marginBottom: 30,

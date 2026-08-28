@@ -34,6 +34,30 @@ export type Album = {
     capa: string | null;
     /** Tipo de lançamento quando a API o disponibiliza (album, single, ep...). */
     tipo?: string;
+    /** Data de lançamento no formato YYYY-MM-DD ou ano. */
+    dataLancamento?: string;
+};
+
+export type Lancamento = {
+    id: string;
+    titulo: string;
+    artista: string;
+    artistaId?: string;
+    album?: string;
+    capa: string | null;
+    tipo?: string;
+    dataLancamento?: string;
+    duracao?: number;
+    streamUrl?: string;
+    source: string;
+};
+
+export type PaginaLancamentos = {
+    pagina: number;
+    limite: number;
+    total: number;
+    totalPaginas: number;
+    lancamentos: Lancamento[];
 };
 
 export type FonteAudio = Pick<Musica, 'source' | 'streamUrl'> & {
@@ -51,8 +75,10 @@ export type Artista = {
     source: string;
     id: string;
     nome: string;
-    capa: string | null;
+    capa: string | null | undefined;
     inscritos?: string; // Opcional, pois pode não vir de todas as fontes
+    totalAlbuns?: number;
+    totalFaixas?: number;
 };
 
 /**
@@ -97,6 +123,149 @@ export function formatarDuracao(segundos: number): string {
     const min = Math.floor(segundos / 60);
     const seg = Math.floor(segundos % 60);
     return `${min}:${seg.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Formata data de lançamento ISO (YYYY-MM-DD) para exibição amigável em português.
+ */
+export function formatarDataLancamento(dataStr?: string): string {
+    if (!dataStr) return '';
+    try {
+        const partes = dataStr.split('-');
+        if (partes.length === 3) {
+            const data = new Date(Number(partes[0]), Number(partes[1]) - 1, Number(partes[2]));
+            if (!isNaN(data.getTime())) {
+                return data.toLocaleDateString('pt-BR', { day: 'numeric', month: 'short', year: 'numeric' });
+            }
+        } else if (partes.length === 1 && partes[0].length === 4) {
+            return partes[0];
+        }
+        return dataStr;
+    } catch {
+        return dataStr;
+    }
+}
+
+const TEMPO_LIMITE_API_MS = 15_000;
+
+/** Faz requisições autenticadas à API, mantendo o token de sessão fora do código. */
+async function requisicaoApi<T>(
+    caminho: string,
+    token: string,
+    opcoes: RequestInit = {},
+    signal?: AbortSignal,
+): Promise<T> {
+    if (!token) throw new Error('Você precisa entrar para acessar esta funcionalidade.');
+
+    const controlador = new AbortController();
+    const aoAbortar = () => controlador.abort();
+    signal?.addEventListener('abort', aoAbortar, { once: true });
+    const timeout = setTimeout(() => controlador.abort(), TEMPO_LIMITE_API_MS);
+
+    try {
+        const resposta = await fetch(`${URL_BASE}${caminho}`, {
+            ...opcoes,
+            signal: controlador.signal,
+            headers: {
+                Accept: 'application/json',
+                Authorization: `Bearer ${token}`,
+                ...opcoes.headers,
+            },
+        });
+
+        const dados: unknown = await resposta.json().catch(() => null);
+        if (!resposta.ok) {
+            const mensagem = dados && typeof dados === 'object' && 'erro' in dados && typeof (dados as { erro: unknown }).erro === 'string'
+                ? (dados as { erro: string }).erro
+                : resposta.status === 401
+                    ? 'Sua sessão expirou. Entre novamente para continuar.'
+                    : `Não foi possível concluir a solicitação (${resposta.status}).`;
+            throw new Error(mensagem);
+        }
+        return dados as T;
+    } catch (erro) {
+        if (erro instanceof Error && erro.name === 'AbortError') {
+            if (signal?.aborted) throw erro;
+            throw new Error('A solicitação demorou demais. Verifique sua conexão e tente novamente.');
+        }
+        if (erro instanceof Error) throw erro;
+        throw new Error('Sem conexão com o servidor.');
+    } finally {
+        clearTimeout(timeout);
+        signal?.removeEventListener('abort', aoAbortar);
+    }
+}
+
+function normalizarLancamento(item: Partial<Lancamento>): Lancamento {
+    return {
+        id: String(item.id ?? ''),
+        titulo: item.titulo ?? 'Sem título',
+        artista: item.artista ?? 'Artista desconhecido',
+        artistaId: item.artistaId,
+        album: item.album,
+        capa: item.capa ?? null,
+        tipo: item.tipo,
+        dataLancamento: item.dataLancamento,
+        duracao: item.duracao,
+        streamUrl: item.streamUrl,
+        source: item.source ?? 'Desconhecida',
+    };
+}
+
+// ============================================================================
+// Artistas seguidos — API autenticada
+// ============================================================================
+
+export async function listarArtistasSeguidos(token: string, signal?: AbortSignal): Promise<Artista[]> {
+    const dados = await requisicaoApi<unknown>('/artists/following', token, {}, signal);
+    if (!Array.isArray(dados)) return [];
+    return dados.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object').map(item => ({
+        id: String(item.id ?? ''),
+        nome: typeof item.nome === 'string' ? item.nome : 'Artista desconhecido',
+        capa: typeof item.capa === 'string' ? item.capa : null,
+        source: typeof item.source === 'string' ? item.source : 'Desconhecida',
+    }));
+}
+
+export async function artistaEstaSendoSeguido(artistId: string, token: string, signal?: AbortSignal): Promise<boolean> {
+    const dados = await requisicaoApi<{ following?: unknown }>(`/artists/${encodeURIComponent(artistId)}/following`, token, {}, signal);
+    return dados.following === true;
+}
+
+export async function seguirArtistaNaApi(artista: Artista, token: string, signal?: AbortSignal): Promise<boolean> {
+    const dados = await requisicaoApi<{ following?: unknown }>(
+        `/artists/${encodeURIComponent(artista.id)}/follow`,
+        token,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: artista.nome, image: artista.capa ?? undefined, source: artista.source }),
+        },
+        signal,
+    );
+    return dados.following !== false;
+}
+
+export async function deixarDeSeguirArtistaNaApi(artistId: string, token: string, signal?: AbortSignal): Promise<boolean> {
+    const dados = await requisicaoApi<{ following?: unknown }>(
+        `/artists/${encodeURIComponent(artistId)}/follow`,
+        token,
+        { method: 'DELETE' },
+        signal,
+    );
+    return dados.following === true;
+}
+
+export async function buscarNovosLancamentos(token: string, pagina = 1, limite = 20, signal?: AbortSignal): Promise<PaginaLancamentos> {
+    const params = new URLSearchParams({ page: String(pagina), limit: String(limite) });
+    const dados = await requisicaoApi<Partial<PaginaLancamentos>>(`/artists/new-releases?${params.toString()}`, token, {}, signal);
+    return {
+        pagina: typeof dados.pagina === 'number' ? dados.pagina : pagina,
+        limite: typeof dados.limite === 'number' ? dados.limite : limite,
+        total: typeof dados.total === 'number' ? dados.total : 0,
+        totalPaginas: typeof dados.totalPaginas === 'number' ? dados.totalPaginas : 0,
+        lancamentos: Array.isArray(dados.lancamentos) ? dados.lancamentos.map(normalizarLancamento) : [],
+    };
 }
 
 // ============================================================================
@@ -362,12 +531,13 @@ export async function buscarAlbunsMB(artistaId: string, signal?: AbortSignal, ar
     try {
         const dados = await resposta.json();
         return dados.map((mbAlbum: any) => ({
-            id: mbAlbum.id,
+            id: String(mbAlbum.id),
             titulo: mbAlbum.title ?? mbAlbum.titulo ?? 'Sem título',
             artista: artistaNome ?? (mbAlbum['artist-credit']?.[0]?.name || 'Artista Desconhecido'),
             source: 'MusicBrainz',
             capa: mbAlbum.cover ?? mbAlbum.capa ?? null,
-            tipo: mbAlbum.type ?? mbAlbum['release-group']?.['primary-type'] ?? mbAlbum['primary-type'] ?? mbAlbum.tipo
+            tipo: mbAlbum.type ?? mbAlbum['release-group']?.['primary-type'] ?? mbAlbum['primary-type'] ?? mbAlbum.tipo ?? 'album',
+            dataLancamento: mbAlbum['first-release-date'] ?? mbAlbum.release_date ?? mbAlbum.data ?? undefined,
         }));
     } catch {
         return [];
@@ -476,12 +646,8 @@ export async function resolverAudio(
     artista: string,
     faixa: string,
     signal?: AbortSignal,
-    source?: string // Adicionado parâmetro opcional para a fonte
-): Promise<{ source: string, url: string, titulo: string }> {
+): Promise<{ source: string; url: string; streamUrl?: string; titulo: string; artista?: string; capa?: string }> {
     const params = new URLSearchParams({ artista, faixa });
-    if (source?.toLowerCase() === 'youtube') {
-        params.append('youtubeVersion', 'v2'); // Adiciona a opção youtube-v2 se a fonte for YouTube
-    }
     const url = `${URL_BASE}/resolver?${params.toString()}`;
 
     let resposta: Response;
@@ -498,10 +664,82 @@ export async function resolverAudio(
 
     try {
         const dados = await resposta.json();
-        return dados;
+        return {
+            source: dados.source || 'Desconhecida',
+            url: dados.url || dados.streamUrl || '',
+            streamUrl: dados.streamUrl || dados.url || '',
+            titulo: dados.titulo || faixa,
+            artista: dados.artista || artista,
+            capa: dados.capa ?? null,
+        };
     } catch {
         throw new Error('Erro ao processar resposta do servidor.');
     }
+}
+
+/**
+ * Busca e compila os lançamentos mais recentes de uma lista de artistas seguidos,
+ * ordenados dos mais recentes para os mais antigos.
+ */
+export async function buscarNovosLancamentosDeArtistas(
+    artistas: Artista[],
+    signal?: AbortSignal
+): Promise<Lancamento[]> {
+    if (!artistas || artistas.length === 0) return [];
+
+    const promessas = artistas.map(async (artista) => {
+        try {
+            const idArtista = artista.id || artista.nome;
+            if (artista.source.toLowerCase() === 'musicbrainz' || /^\d+$/.test(idArtista)) {
+                const albuns = await buscarAlbunsMB(idArtista, signal, artista.nome);
+                return albuns.map(alb => ({
+                    id: String(alb.id),
+                    titulo: alb.titulo,
+                    artista: alb.artista || artista.nome,
+                    artistaId: idArtista,
+                    album: alb.titulo,
+                    capa: alb.capa || artista.capa,
+                    tipo: alb.tipo || 'album',
+                    dataLancamento: alb.dataLancamento,
+                    source: alb.source || 'MusicBrainz',
+                } as Lancamento));
+            } else {
+                const albuns = await pesquisarAlbums(artista.nome, signal);
+                return albuns.map(alb => ({
+                    id: String(alb.id),
+                    titulo: alb.titulo,
+                    artista: alb.artista || artista.nome,
+                    artistaId: artista.id,
+                    album: alb.titulo,
+                    capa: alb.capa || artista.capa,
+                    tipo: alb.tipo || 'album',
+                    dataLancamento: alb.dataLancamento,
+                    source: alb.source || 'SoundCloud',
+                } as Lancamento));
+            }
+        } catch {
+            return [];
+        }
+    });
+
+    const resultados = await Promise.all(promessas);
+    const todosLancamentos = resultados.flat();
+
+    // Remove duplicatas de lançamentos com mesmo título e artista
+    const lancamentosUnicos = new Map<string, Lancamento>();
+    for (const lancamento of todosLancamentos) {
+        const chave = `${lancamento.artista.toLowerCase()}_${lancamento.titulo.toLowerCase()}`;
+        if (!lancamentosUnicos.has(chave)) {
+            lancamentosUnicos.set(chave, lancamento);
+        }
+    }
+
+    // Ordena do mais recente para o mais antigo
+    return Array.from(lancamentosUnicos.values()).sort((a, b) => {
+        const dataA = a.dataLancamento ? new Date(a.dataLancamento).getTime() : 0;
+        const dataB = b.dataLancamento ? new Date(b.dataLancamento).getTime() : 0;
+        return dataB - dataA;
+    });
 }
 
 function normalizarTexto(texto: unknown): string {

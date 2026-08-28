@@ -39,6 +39,8 @@ const RECENTES: ItemRecente[] = [
 
 const PLAYLISTS: ItemPlaylist[] = [
     { id: 'fav', titulo: 'Músicas Curtidas', descricao: 'Suas faixas favoritas', cor: '#E11D48', rota: '/(Aplicativo)/biblioteca/favoritas', icone: 'heart' },
+    { id: 'lancamentos', titulo: 'Novos Lançamentos', descricao: 'Músicas novas dos artistas que você segue', cor: '#6366F1', rota: '/(Aplicativo)/biblioteca/lancamentos', icone: 'sparkles' },
+    { id: 'seguindo', titulo: 'Artistas Seguidos', descricao: 'Seus artistas favoritos', cor: '#0891B2', rota: '/(Aplicativo)/biblioteca/seguindo', icone: 'people' },
     { id: '1', titulo: 'Descobertas', descricao: 'Novos sons toda semana', cor: '#6366F1' },
     { id: '2', titulo: 'Para treinar', descricao: 'Energia alta', cor: '#F59E0B' },
     { id: '3', titulo: 'Acústico', descricao: 'Voz e violão', cor: '#14B8A6' },
