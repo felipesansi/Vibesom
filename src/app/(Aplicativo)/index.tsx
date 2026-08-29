@@ -18,7 +18,7 @@ import { usePlayer } from '../../contexto/ContextoPlayer';
 import { obterOpcaoAcessoSoundCloud } from '../../lib/apiMusica';
 
 export default function TelaConfiguracoes() {
-    const { usuario, sair } = useAutenticacao();
+    const { usuario, nomeExibido, sair } = useAutenticacao();
     const { parar } = usePlayer();
     const router = useRouter();
     const [modalSair, setModalSair] = useState(false);
@@ -37,9 +37,6 @@ export default function TelaConfiguracoes() {
         }
     };
 
-    const nomeExibido = usuario?.user_metadata?.full_name
-        || usuario?.user_metadata?.display_name
-        || 'Usuário';
     const iniciais = nomeExibido
         .split(' ')
         .slice(0, 2)

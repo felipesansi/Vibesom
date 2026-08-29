@@ -54,18 +54,11 @@ function obterSaudacao(): string {
 }
 
 export default function TelaInicio() {
-    const { usuario } = useAutenticacao();
+    const { nomeExibido } = useAutenticacao();
     const { faixaAtual, estado, pausar, retomar } = usePlayer();
     const router = useRouter();
 
-    const nome =
-        usuario?.user_metadata?.full_name ||
-        usuario?.user_metadata?.display_name ||
-        usuario?.user_metadata?.name ||
-        (usuario?.email ? usuario.email.split('@')[0] : null) ||
-        'Ouvinte';
-
-    const primeiroNome = String(nome).split(' ')[0];
+    const primeiroNome = String(nomeExibido).split(' ')[0];
     const filtros = ['Para você', 'Novidades', 'Relax', 'Treino'];
     const [filtroSelecionado, setFiltroSelecionado] = useState('Para você');
     const { abrirConfiguracoesBluetooth } = useBluetooth();

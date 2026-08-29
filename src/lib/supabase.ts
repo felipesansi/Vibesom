@@ -106,22 +106,63 @@ export type PlaylistMusicaDB = {
     adicionado_em: string;
 };
 
+export type PerfilUsuarioDB = {
+    id: string;
+    nome_usuario: string | null;
+    nome_completo: string | null;
+    avatar_url: string | null;
+};
+
+export async function buscarPerfilUsuario(
+    usuarioId: string
+): Promise<PerfilUsuarioDB | null> {
+    if (!usuarioId) return null;
+
+    // Tenta cache local primeiro
+    try {
+        const raw = await adaptadorArmazenamento.getItem(`vibesom_perfil_${usuarioId}`);
+        if (raw) {
+            const perfilLocal = JSON.parse(raw);
+            if (perfilLocal?.id) return perfilLocal;
+        }
+    } catch {}
+
+    // Consulta no Supabase
+    try {
+        const { data, error } = await supabase
+            .from('perfis_usuarios')
+            .select('id, nome_usuario, nome_completo, avatar_url')
+            .eq('id', usuarioId)
+            .maybeSingle();
+
+        if (!error && data) {
+            const perfil: PerfilUsuarioDB = {
+                id: data.id,
+                nome_usuario: data.nome_usuario ?? null,
+                nome_completo: data.nome_completo ?? null,
+                avatar_url: data.avatar_url ?? null,
+            };
+            await adaptadorArmazenamento.setItem(
+                `vibesom_perfil_${usuarioId}`,
+                JSON.stringify(perfil)
+            ).catch(() => {});
+            return perfil;
+        }
+    } catch (e) {
+        console.warn('[Supabase] Erro ao buscar perfil do usuário:', e);
+    }
+
+    return null;
+}
+
 export async function criarOuAtualizarPerfilUsuario(
     usuario: User,
-): Promise<{ erro: string | null }> {
+): Promise<{ erro: string | null; perfil?: PerfilUsuarioDB }> {
     if (!usuario?.id) {
         return { erro: 'Usuário inválido.' };
     }
 
-    const { data: me, error: userErr } = await supabase.auth.getUser();
-    if (userErr) {
-        return { erro: userErr.message };
-    }
-    if (!me?.user) {
-        return { erro: 'Usuário não autenticado.' };
-    }
-
-    const usuarioId = me.user.id;
+    const usuarioId = usuario.id;
     const nomeUsuario =
         typeof usuario.user_metadata?.user_name === 'string' && usuario.user_metadata.user_name.trim()
             ? usuario.user_metadata.user_name.trim()
@@ -132,23 +173,46 @@ export async function criarOuAtualizarPerfilUsuario(
     const nomeCompleto =
         typeof usuario.user_metadata?.full_name === 'string' && usuario.user_metadata.full_name.trim()
             ? usuario.user_metadata.full_name.trim()
-            : null;
+            : typeof usuario.user_metadata?.display_name === 'string' && usuario.user_metadata.display_name.trim()
+                ? usuario.user_metadata.display_name.trim()
+                : typeof usuario.user_metadata?.name === 'string' && usuario.user_metadata.name.trim()
+                    ? usuario.user_metadata.name.trim()
+                    : null;
 
     const avatarUrl =
         typeof usuario.user_metadata?.avatar_url === 'string' && usuario.user_metadata.avatar_url.trim()
             ? usuario.user_metadata.avatar_url.trim()
             : null;
 
-    const { error } = await supabase
-        .from('perfis_usuarios')
-        .upsert({
-            id: usuarioId,
-            nome_usuario: nomeUsuario,
-            nome_completo: nomeCompleto,
-            avatar_url: avatarUrl,
-        }, { onConflict: 'id' });
+    const perfilObj: PerfilUsuarioDB = {
+        id: usuarioId,
+        nome_usuario: nomeUsuario,
+        nome_completo: nomeCompleto,
+        avatar_url: avatarUrl,
+    };
 
-    return { erro: error?.message ?? null };
+    // Salva localmente de imediato
+    try {
+        await adaptadorArmazenamento.setItem(
+            `vibesom_perfil_${usuarioId}`,
+            JSON.stringify(perfilObj)
+        );
+    } catch {}
+
+    try {
+        const { error } = await supabase
+            .from('perfis_usuarios')
+            .upsert({
+                id: usuarioId,
+                nome_usuario: nomeUsuario,
+                nome_completo: nomeCompleto,
+                avatar_url: avatarUrl,
+            }, { onConflict: 'id' });
+
+        return { erro: error?.message ?? null, perfil: perfilObj };
+    } catch (e) {
+        return { erro: null, perfil: perfilObj };
+    }
 }
 
 export async function salvarMusicaFavorita(
