@@ -83,7 +83,7 @@ export default function TelaEntrar() {
                 if (erroAuth) {
                     setErro(mapearErro(erroAuth));
                 } else {
-                    roteador.replace('/(Aplicativo)/inicio');
+                    roteador.replace('/(Autenticacao)/selecionar-artistas');
                 }
             } else {
                 const { erro: erroAuth } = await cadastrar(email, senha, nome.trim());

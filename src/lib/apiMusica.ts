@@ -99,6 +99,12 @@ export type ResultadoPesquisa = {
     playlists: Playlist[];
 };
 
+export type OpcaoAcessoSoundCloud = {
+    criarContaUrl: string;
+    conectarUrl: string | null;
+    oauthConfigurado: boolean;
+};
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -209,6 +215,19 @@ function normalizarLancamento(item: Partial<Lancamento>): Lancamento {
         duracao: item.duracao,
         streamUrl: item.streamUrl,
         source: item.source ?? 'Desconhecida',
+    };
+}
+
+/** Retorna a opção oficial de criar/conectar uma conta SoundCloud. */
+export async function obterOpcaoAcessoSoundCloud(signal?: AbortSignal): Promise<OpcaoAcessoSoundCloud> {
+    const resposta = await fetch(`${URL_BASE}/soundcloud/acesso`, { signal });
+    if (!resposta.ok) throw new Error('Não foi possível obter a opção do SoundCloud.');
+    const dados: unknown = await resposta.json();
+    const item = dados && typeof dados === 'object' ? dados as Record<string, unknown> : {};
+    return {
+        criarContaUrl: typeof item.criarContaUrl === 'string' ? item.criarContaUrl : 'https://soundcloud.com/signup',
+        conectarUrl: typeof item.conectarUrl === 'string' ? item.conectarUrl : null,
+        oauthConfigurado: item.oauthConfigurado === true,
     };
 }
 

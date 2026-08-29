@@ -3,13 +3,14 @@ import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
+    Linking,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
 import Tema from '../../constantes/Cores';
-import { buscarFontesDeAudio, FonteAudio, Musica } from '../lib/apiMusica';
+import { buscarFontesDeAudio, FonteAudio, Musica, obterOpcaoAcessoSoundCloud } from '../lib/apiMusica';
 
 type Props = {
     musica: Musica | null;
@@ -40,6 +41,7 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
     const [fontes, setFontes] = useState<FonteAudio[]>([]);
     const [carregando, setCarregando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
+    const [urlCriarContaSoundCloud, setUrlCriarContaSoundCloud] = useState('https://soundcloud.com/signup');
 
     useEffect(() => {
         if (!visivel || !musica) return;
@@ -49,9 +51,13 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
         setErro(null);
         setFontes([]);
 
-        buscarFontesDeAudio(musica, controlador.signal)
-            .then(resultado => {
+        Promise.all([
+            buscarFontesDeAudio(musica, controlador.signal),
+            obterOpcaoAcessoSoundCloud(controlador.signal).catch(() => null),
+        ])
+            .then(([resultado, acesso]) => {
                 setFontes(resultado);
+                if (acesso?.criarContaUrl) setUrlCriarContaSoundCloud(acesso.criarContaUrl);
                 if (!resultado.length) setErro('Não encontramos opções do YouTube ou SoundCloud com pelo menos um minuto.');
             })
             .catch(e => {
@@ -68,6 +74,14 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
         if (!musica) return;
         onSelecionar({ ...musica, ...fonte });
         onFechar();
+    };
+
+    const abrirCriacaoContaSoundCloud = async () => {
+        try {
+            await Linking.openURL(urlCriarContaSoundCloud);
+        } catch {
+            setErro('Não foi possível abrir o cadastro do SoundCloud.');
+        }
     };
 
     return (
@@ -87,6 +101,17 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
 
                     <Text style={estilos.ajuda}>Se não tocar, tente outra fonte </Text>
                     <Text style={estilos.ajuda}>ou procure direto na busca pelo nome do artista e da música.</Text>
+
+                    <View style={estilos.contaSoundCloud}>
+                        <Ionicons name="logo-soundcloud" size={22} color="#FF5500" />
+                        <View style={{ flex: 1 }}>
+                            <Text style={estilos.tituloConta}>Mais opções no SoundCloud</Text>
+                            <Text style={estilos.textoConta}>Crie uma conta, se quiser, para acessar o catálogo e recursos da plataforma.</Text>
+                        </View>
+                        <TouchableOpacity onPress={abrirCriacaoContaSoundCloud} style={estilos.botaoConta}>
+                            <Text style={estilos.textoBotaoConta}>Criar conta</Text>
+                        </TouchableOpacity>
+                    </View>
 
                     {carregando ? (
                         <View style={estilos.estado}>
@@ -124,6 +149,11 @@ const estilos = StyleSheet.create({
     titulo: { color: Tema.texto, fontSize: 20, fontWeight: '800', marginTop: 4 },
     subtitulo: { color: Tema.textoSecundario, fontSize: 14, marginTop: 2 },
     ajuda: { color: Tema.textoSuave, fontSize: 13, lineHeight: 18, marginTop: 16, marginBottom: 10 },
+    contaSoundCloud: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: '#FF550015', borderWidth: 1, borderColor: '#FF550040', borderRadius: 14, padding: 12, marginBottom: 8 },
+    tituloConta: { color: Tema.texto, fontSize: 13, fontWeight: '700' },
+    textoConta: { color: Tema.textoSecundario, fontSize: 11, lineHeight: 15, marginTop: 2 },
+    botaoConta: { backgroundColor: '#FF5500', borderRadius: 9, paddingHorizontal: 10, paddingVertical: 8 },
+    textoBotaoConta: { color: Tema.texto, fontWeight: '800', fontSize: 11 },
     estado: { minHeight: 100, alignItems: 'center', justifyContent: 'center', gap: 12 },
     textoEstado: { color: Tema.textoSecundario, textAlign: 'center', fontSize: 14, marginVertical: 20 },
     opcao: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: Tema.borda },
