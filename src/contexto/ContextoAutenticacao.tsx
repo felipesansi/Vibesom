@@ -63,6 +63,9 @@ export function ProvedorAutenticacao({ children: filhos }: { children: React.Rea
                 data: {
                     full_name: nome,
                     display_name: nome,
+                    user_name: email.split('@')[0],
+                    soundcloud_email: email,
+                    soundcloud_synced: true,
                 },
             },
         });

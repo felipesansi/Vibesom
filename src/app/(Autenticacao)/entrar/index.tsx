@@ -91,9 +91,9 @@ export default function TelaEntrar() {
                     setErro(mapearErro(erroAuth));
                 } else {
                     Alert.alert(
-                        'Conta criada',
-                        'Verifique seu email para confirmar o cadastro e depois faça login.',
-                        [{ text: 'OK', onPress: () => alternarModo('entrada') }]
+                        'Conta criada com sucesso!',
+                        'Sua conta no Vibesom está configurada para acesso ao catálogo musical e SoundCloud.\n\nVerifique seu email para confirmar o cadastro e depois faça login.',
+                        [{ text: 'Fazer login', onPress: () => alternarModo('entrada') }]
                     );
                 }
             }

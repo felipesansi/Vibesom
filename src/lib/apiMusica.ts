@@ -269,7 +269,11 @@ export async function deixarDeSeguirArtistaNaApi(artistId: string, token: string
     const dados = await requisicaoApi<{ following?: unknown }>(
         `/artists/${encodeURIComponent(artistId)}/follow`,
         token,
-        { method: 'DELETE' },
+        {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({}),
+        },
         signal,
     );
     return dados.following === true;

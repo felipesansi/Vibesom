@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import {
     ActivityIndicator,
+    Linking,
     Modal,
     SafeAreaView,
     ScrollView,
@@ -14,6 +15,7 @@ import {
 import Tema from '../../../constantes/Cores';
 import { useAutenticacao } from '../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../contexto/ContextoPlayer';
+import { obterOpcaoAcessoSoundCloud } from '../../lib/apiMusica';
 
 export default function TelaConfiguracoes() {
     const { usuario, sair } = useAutenticacao();
@@ -102,6 +104,50 @@ export default function TelaConfiguracoes() {
                             <View style={estilos.itemTexto}>
                                 <Text style={[estilos.textoMenu, { color: Tema.erro }]}>Encerrar sessão</Text>
                                 <Text style={estilos.textoMenuDesc}>Sair da sua conta no dispositivo</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color={Tema.textoSuave} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                {/* SoundCloud & Fontes de Áudio */}
+                <View style={estilos.secao}>
+                    <Text style={estilos.subtitulo}>SoundCloud & Fontes de Áudio</Text>
+                    <View style={estilos.grupo}>
+                        <View style={estilos.itemMenu}>
+                            <View style={[estilos.iconeContainer, { backgroundColor: '#FF550022' }]}>
+                                <Ionicons name="logo-soundcloud" size={20} color="#FF5500" />
+                            </View>
+                            <View style={estilos.itemTexto}>
+                                <Text style={estilos.textoMenu}>Conta SoundCloud</Text>
+                                <Text style={estilos.textoMenuDesc}>
+                                    {usuario?.email ? `Vinculada a ${usuario.email}` : 'Disponível no app'}
+                                </Text>
+                            </View>
+                            <View style={estilos.badgeAtivo}>
+                                <Text style={estilos.textoBadgeAtivo}>Integrada</Text>
+                            </View>
+                        </View>
+
+                        <View style={estilos.divisor} />
+
+                        <TouchableOpacity
+                            style={estilos.itemMenu}
+                            onPress={async () => {
+                                try {
+                                    const opcao = await obterOpcaoAcessoSoundCloud().catch(() => null);
+                                    const url = opcao?.criarContaUrl || 'https://soundcloud.com/signup';
+                                    await Linking.openURL(url);
+                                } catch {}
+                            }}
+                            activeOpacity={0.7}
+                        >
+                            <View style={[estilos.iconeContainer, { backgroundColor: '#FF550018' }]}>
+                                <Ionicons name="open-outline" size={20} color="#FF5500" />
+                            </View>
+                            <View style={estilos.itemTexto}>
+                                <Text style={estilos.textoMenu}>Acessar SoundCloud Oficial</Text>
+                                <Text style={estilos.textoMenuDesc}>Gerenciar perfil e playlists no SoundCloud</Text>
                             </View>
                             <Ionicons name="chevron-forward" size={18} color={Tema.textoSuave} />
                         </TouchableOpacity>
