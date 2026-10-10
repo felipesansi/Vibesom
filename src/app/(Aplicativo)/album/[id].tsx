@@ -1,12 +1,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { SeletorFonteAudio } from '../../../componentes/SeletorFonteAudio';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
-import { buscarMusicasDoAlbum, formatarDuracao, Musica } from '../../../lib/apiMusica';
+import { baixarMusica } from '../../services/DownloadMusica';
+import { buscarMusicasDoAlbum, formatarDuracao, Musica, urlStreamCompleta } from '../../../lib/apiMusica';
 
 export default function TelaAlbum() {
     const router = useRouter();
@@ -52,6 +53,20 @@ export default function TelaAlbum() {
         await tocar(musica, [musica]);
     }, [estado, faixaAtual, pausar, retomar, tocar]);
 
+    const baixarFaixa = useCallback(async (musica: Musica) => {
+        try {
+            if (!musica.streamUrl) {
+                Alert.alert('Download', 'Essa música não possui uma URL de streaming disponível.');
+                return;
+            }
+
+            const arquivo = await baixarMusica(musica.id, urlStreamCompleta(musica.streamUrl), 'https://vibesom-api.vercel.app');
+            Alert.alert('Download', `Música salva em: ${arquivo.uri}`);
+        } catch (erro) {
+            Alert.alert('Download', erro instanceof Error ? erro.message : 'Não foi possível baixar a música.');
+        }
+    }, []);
+
     const renderMusica = useCallback(({ item, index }: { item: Musica; index: number }) => {
         const ativa = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         const carregandoEsta = ativa && estado === 'carregando';
@@ -62,10 +77,13 @@ export default function TelaAlbum() {
                 <Text style={estilos.artistaFaixa} numberOfLines={1}>{item.artista}</Text>
             </View>
             <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
+            <TouchableOpacity hitSlop={10} onPress={() => baixarFaixa(item)} style={estilos.botaoDownload}>
+                <Ionicons name="download-outline" size={18} color={Tema.destaqueAlt} />
+            </TouchableOpacity>
             {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
             <Ionicons name="play-circle-outline" size={25} color={Tema.textoSecundario} />
         </TouchableOpacity>;
-    }, [faixaAtual, estado]);
+    }, [baixarFaixa, faixaAtual, estado]);
 
     const titulo = params.titulo ? decodeURIComponent(params.titulo) : 'Álbum';
     const artista = params.artista ? decodeURIComponent(params.artista) : '';
@@ -96,6 +114,6 @@ const estilos = StyleSheet.create({
     topo: { paddingHorizontal: 16, paddingTop: 6 }, voltar: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' }, cabecalho: { alignItems: 'center', paddingHorizontal: 30, paddingBottom: 28 },
     capa: { width: 205, height: 205, borderRadius: 8, backgroundColor: Tema.superficieClara, shadowColor: '#000', shadowOpacity: .35, shadowRadius: 14, elevation: 8 }, capaVazia: { alignItems: 'center', justifyContent: 'center' },
     tipo: { color: Tema.destaqueAlt, fontSize: 12, fontWeight: '800', letterSpacing: 1.1, marginTop: 20 }, titulo: { color: Tema.texto, fontSize: 28, fontWeight: '900', textAlign: 'center', marginTop: 5 }, artista: { color: Tema.textoSecundario, fontSize: 16, marginTop: 7 }, contagem: { color: Tema.textoSuave, fontSize: 13, marginTop: 7 },
-    tituloLista: { color: Tema.texto, fontSize: 20, fontWeight: '800', marginLeft: 16, marginBottom: 9 }, faixa: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9 }, faixaAtiva: { backgroundColor: Tema.superficie }, numero: { width: 21, color: Tema.textoSuave, textAlign: 'right', fontVariant: ['tabular-nums'] }, tituloFaixa: { color: Tema.texto, fontSize: 15, fontWeight: '600' }, artistaFaixa: { color: Tema.textoSecundario, fontSize: 13, marginTop: 3 }, duracao: { color: Tema.textoSuave, fontSize: 13 },
+    tituloLista: { color: Tema.texto, fontSize: 20, fontWeight: '800', marginLeft: 16, marginBottom: 9 }, faixa: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 9 }, faixaAtiva: { backgroundColor: Tema.superficie }, numero: { width: 21, color: Tema.textoSuave, textAlign: 'right', fontVariant: ['tabular-nums'] }, tituloFaixa: { color: Tema.texto, fontSize: 15, fontWeight: '600' }, artistaFaixa: { color: Tema.textoSecundario, fontSize: 13, marginTop: 3 }, duracao: { color: Tema.textoSuave, fontSize: 13 }, botaoDownload: { padding: 6, borderRadius: 8 },
     vazio: { color: Tema.textoSuave, textAlign: 'center', marginTop: 38, paddingHorizontal: 25 }, erro: { color: Tema.erro, textAlign: 'center', padding: 22 },
 });

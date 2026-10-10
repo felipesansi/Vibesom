@@ -17,6 +17,7 @@ import Tema from '../../../../constantes/Cores';
 import { SeletorFonteAudio } from '../../../componentes/SeletorFonteAudio';
 import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
+import { baixarMusica } from '../../services/DownloadMusica';
 import {
     Album,
     Artista,
@@ -29,6 +30,7 @@ import {
     pesquisarAlbums,
     pesquisarMusicasPorArtista,
     seguirArtistaNaApi,
+    urlStreamCompleta,
 } from '../../../lib/apiMusica';
 import {
     buscarMusicasDaPlaylist,
@@ -156,6 +158,20 @@ export default function TelaArtista() {
         await tocar(musica, [musica]);
     }, [estado, faixaAtual, pausar, retomar, tocar]);
 
+    const baixarFaixa = useCallback(async (musica: Musica) => {
+        try {
+            if (!musica.streamUrl) {
+                Alert.alert('Download', 'Essa música não possui uma URL de streaming disponível.');
+                return;
+            }
+
+            const arquivo = await baixarMusica(musica.id, urlStreamCompleta(musica.streamUrl), 'https://vibesom-api.vercel.app');
+            Alert.alert('Download', `Música salva em: ${arquivo.uri}`);
+        } catch (erro) {
+            Alert.alert('Download', erro instanceof Error ? erro.message : 'Não foi possível baixar a música.');
+        }
+    }, []);
+
     const abrirAlbum = useCallback((album: Album) => {
         router.push({
             pathname: '/album/[id]',
@@ -274,6 +290,9 @@ export default function TelaArtista() {
                 </TouchableOpacity>
                 <View style={estilos.musicaAcoes}>
                     <Text style={estilos.duracao}>{formatarDuracao(item.duracao)}</Text>
+                    <TouchableOpacity style={estilos.botaoDownload} onPress={() => baixarFaixa(item)} activeOpacity={0.7}>
+                        <Ionicons name="download-outline" size={18} color={Tema.destaqueAlt} />
+                    </TouchableOpacity>
                     {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
                     <TouchableOpacity
                         style={estilos.botaoCurtir}
@@ -289,7 +308,7 @@ export default function TelaArtista() {
                 </View>
             </View>
         );
-    }, [faixaAtual, estado, favoritas, alternarCurtida]);
+    }, [baixarFaixa, faixaAtual, estado, favoritas, alternarCurtida]);
 
     const cabecalho = useMemo(() => (
         <>
@@ -379,6 +398,7 @@ const estilos = StyleSheet.create({
     tituloMusica: { color: Tema.texto, fontSize: 15, fontWeight: '700' },
     subtituloMusica: { color: Tema.textoSuave, fontSize: 13, marginTop: 3 },
     duracao: { color: Tema.textoSuave, fontSize: 13, minWidth: 40, textAlign: 'right' },
+    botaoDownload: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center', backgroundColor: Tema.superficieClara },
     botaoCurtir: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: Tema.superficieClara },
     vazio: { color: Tema.textoSuave, textAlign: 'center', marginTop: 45, paddingHorizontal: 30 },
     erro: { color: Tema.erro, textAlign: 'center', padding: 24 },
