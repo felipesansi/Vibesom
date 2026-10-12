@@ -165,8 +165,8 @@ export default function TelaArtista() {
                 return;
             }
 
-            const arquivo = await baixarMusica(musica.id, urlStreamCompleta(musica.streamUrl), 'https://vibesom-api.vercel.app');
-            Alert.alert('Download', `Música salva em: ${arquivo.uri}`);
+            await baixarMusica(musica, urlStreamCompleta(musica.streamUrl));
+            Alert.alert('Download', 'Música salva para ouvir offline na seção "Músicas baixadas".');
         } catch (erro) {
             Alert.alert('Download', erro instanceof Error ? erro.message : 'Não foi possível baixar a música.');
         }

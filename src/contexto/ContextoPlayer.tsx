@@ -8,6 +8,7 @@ import React, {
 } from 'react';
 import { Alert } from 'react-native';
 import { Musica, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
+import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
@@ -107,17 +108,19 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
             // A escolha e o fallback entre provedores pertencem à API. Não
             // restringimos a fonte recebida na busca (por exemplo, Piped).
-            let url = '';
-            try {
-                const resolucao = await resolverAudio(musica.artista, musica.titulo);
-                url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
-            } catch (erroResolucao) {
-                console.warn('[Player] API não encontrou uma fonte de áudio:', erroResolucao);
-                const mensagem = 'Áudio não disponível para esta música no momento.';
-                setErroMsg(mensagem);
-                setEstado('erro');
-                Alert.alert('Não foi possível reproduzir', mensagem);
-                return;
+            let url = obterArquivoMusicaBaixada(musica) ?? '';
+            if (!url) {
+                try {
+                    const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                    url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
+                } catch (erroResolucao) {
+                    console.warn('[Player] API não encontrou uma fonte de áudio:', erroResolucao);
+                    const mensagem = 'Áudio não disponível para esta música no momento.';
+                    setErroMsg(mensagem);
+                    setEstado('erro');
+                    Alert.alert('Não foi possível reproduzir', mensagem);
+                    return;
+                }
             }
 
             if (!url) {
