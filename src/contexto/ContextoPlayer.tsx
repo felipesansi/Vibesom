@@ -106,9 +106,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setIndiceAtual(index);
             setFaixaAtual(musica);
 
-            // A escolha e o fallback entre provedores pertencem à API. Não
-            // restringimos a fonte recebida na busca (por exemplo, Piped).
             let url = obterArquivoMusicaBaixada(musica) ?? '';
+            if (!url && musica.streamUrl) {
+                url = urlStreamCompleta(musica.streamUrl);
+            }
             if (!url) {
                 try {
                     const resolucao = await resolverAudio(musica.artista, musica.titulo);
