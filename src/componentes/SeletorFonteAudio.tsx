@@ -47,27 +47,47 @@ export function SeletorFonteAudio({ musica, visivel, onFechar, onSelecionar }: P
         if (!visivel || !musica) return;
 
         const controlador = new AbortController();
+        let ativo = true;
+        let expirou = false;
+        const timeout = setTimeout(() => {
+            expirou = true;
+            controlador.abort();
+        }, 15_000);
         setCarregando(true);
         setErro(null);
         setFontes([]);
 
-        Promise.all([
-            buscarFontesDeAudio(musica, controlador.signal),
-            obterOpcaoAcessoSoundCloud(controlador.signal).catch(() => null),
-        ])
-            .then(([resultado, acesso]) => {
+        const fontesPromise = buscarFontesDeAudio(musica, controlador.signal)
+            .then(resultado => {
+                if (!ativo) return;
                 setFontes(resultado);
-                if (acesso?.criarContaUrl) setUrlCriarContaSoundCloud(acesso.criarContaUrl);
                 if (!resultado.length) setErro('Não encontramos opções do YouTube ou SoundCloud com pelo menos um minuto.');
             })
             .catch(e => {
-                if (e instanceof Error && e.name !== 'AbortError') {
-                    setErro('Não foi possível consultar as fontes de áudio.');
+                if (!ativo) return;
+                if (expirou) {
+                    setErro('A consulta das fontes demorou demais. Verifique sua conexão e tente novamente.');
+                } else if (e instanceof Error && e.name !== 'AbortError') {
+                    setErro(e.message || 'Não foi possível consultar as fontes de áudio.');
                 }
             })
-            .finally(() => setCarregando(false));
+            .finally(() => {
+                if (ativo) setCarregando(false);
+            });
 
-        return () => controlador.abort();
+        const acessoPromise = obterOpcaoAcessoSoundCloud(controlador.signal)
+            .then(acesso => {
+                if (ativo && acesso.criarContaUrl) setUrlCriarContaSoundCloud(acesso.criarContaUrl);
+            })
+            .catch(() => undefined);
+
+        Promise.all([fontesPromise, acessoPromise]).finally(() => clearTimeout(timeout));
+
+        return () => {
+            ativo = false;
+            clearTimeout(timeout);
+            controlador.abort();
+        };
     }, [visivel, musica]);
 
     const escolher = (fonte: FonteAudio) => {

@@ -868,7 +868,7 @@ export async function buscarFontesDeAudio(
 
         const pontuarCandidato = (candidato: Musica) => {
             if (!candidato.titulo || !candidato.artista) return -99;
-            if ((candidato.duracao ?? 0) < 45) return -99; // descarta faixas muito curtas
+            if ((candidato.duracao ?? 0) < 60) return -99;
 
             const tituloCandidato = normalizarTexto(candidato.titulo);
             const artistaCandidato = normalizarTexto(candidato.artista);
@@ -904,14 +904,13 @@ export async function buscarFontesDeAudio(
 
         const candidatos = musicas
             .map(c => ({ ...c, pontuacao: pontuarCandidato(c) }))
-            .filter(c => c.pontuacao > 0)
+            .filter(c => c.pontuacao > 0 && typeof c.streamUrl === 'string' && c.streamUrl.trim().length > 0)
             .sort((a, b) => b.pontuacao - a.pontuacao);
 
         return candidatos.slice(0, 5);
-
     } catch (err) {
         if (err instanceof Error && err.name === 'AbortError') throw err;
         console.error('[buscarFontesDeAudio] Falha ao buscar fontes:', err);
-        return [];
+        throw err;
     }
 }

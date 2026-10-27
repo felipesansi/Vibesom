@@ -1,9 +1,14 @@
 import { Directory, File, Paths } from 'expo-file-system';
+import { Platform } from 'react-native';
 import type { Musica } from '../../lib/apiMusica';
 
-const pastaDownloads = new Directory(Paths.document, 'downloads');
+const pastaDownloads = Platform.OS === 'web' ? null : new Directory(Paths.document, 'downloads');
 
 function criarPastaDownloads() {
+    if (!pastaDownloads) {
+        throw new Error('Downloads offline não estão disponíveis na versão web.');
+    }
+
     pastaDownloads.create({
         intermediates: true,
         idempotent: true,
@@ -15,6 +20,10 @@ function chaveDaMusica(musica: Pick<Musica, 'source' | 'id'>) {
 }
 
 function arquivosDaMusica(musica: Pick<Musica, 'source' | 'id'>) {
+    if (!pastaDownloads) {
+        throw new Error('Downloads offline não estão disponíveis na versão web.');
+    }
+
     const chave = chaveDaMusica(musica);
     return {
         audio: new File(pastaDownloads, `${chave}.mp3`),
@@ -53,12 +62,18 @@ export async function baixarMusica(musica: Musica, streamUrl: string): Promise<F
 }
 
 export function obterArquivoMusicaBaixada(musica: Pick<Musica, 'source' | 'id'>): string | null {
+    if (!pastaDownloads) return null;
+
     const { audio, metadados } = arquivosDaMusica(musica);
     return audio.exists && metadados.exists ? audio.uri : null;
 }
 
 export async function listarMusicasBaixadas(): Promise<Musica[]> {
     criarPastaDownloads();
+    if (!pastaDownloads) {
+        throw new Error('Downloads offline não estão disponíveis na versão web.');
+    }
+
     const musicas: Musica[] = [];
 
     for (const item of pastaDownloads.list()) {

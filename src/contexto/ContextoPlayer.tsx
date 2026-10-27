@@ -4,11 +4,13 @@ import React, {
     useCallback,
     useContext,
     useEffect,
+    useRef,
     useState
 } from 'react';
 import { Alert } from 'react-native';
 import { Musica, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
+import { obterAudioYoutube } from '../lib/youtube';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
@@ -44,6 +46,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const [erroMsg, setErroMsg] = useState<string | null>(null);
     const [repetir, setRepetir] = useState(false);
     const [aleatorio, setAleatorio] = useState(false);
+    const requisicaoAtual = useRef(0);
 
     const player = useAudioPlayer(null);
     const status = useAudioPlayerStatus(player);
@@ -70,14 +73,14 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        if (!status.isLoaded || status.isBuffering) {
-            setEstado('carregando');
-        } else if (status.playing) {
+        if (status.playing) {
             setEstado('tocando');
+        } else if (!status.isLoaded || status.isBuffering || estado === 'carregando') {
+            setEstado('carregando');
         } else {
             setEstado('pausado');
         }
-    }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual, erroMsg]);
+    }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual, erroMsg, estado]);
 
     // Alguns provedores encerram a conexão sem propagar um erro nativo. Evita
     // que a interface fique carregando indefinidamente nesses casos.
@@ -85,19 +88,22 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         if (!faixaAtual || estado !== 'carregando') return;
 
         const limite = setTimeout(() => {
-            const mensagem = 'A reprodução demorou demais para iniciar. Tente outra música.';
+            const mensagem = 'A fonte de áudio demorou demais para responder. Tente outra fonte ou música.';
+            player.pause();
             setErroMsg(mensagem);
             setEstado('erro');
             Alert.alert('Não foi possível reproduzir', mensagem);
         }, 20_000);
 
         return () => clearTimeout(limite);
-    }, [faixaAtual?.id, faixaAtual?.source, estado]);
+    }, [faixaAtual?.id, faixaAtual?.source, estado, player]);
 
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
+        const requisicao = ++requisicaoAtual.current;
         try {
             setEstado('carregando');
             setErroMsg(null);
+            player.pause();
 
             const listaReferencia = novaLista || lista;
             if (novaLista) setLista(novaLista);
@@ -107,14 +113,29 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setFaixaAtual(musica);
 
             let url = obterArquivoMusicaBaixada(musica) ?? '';
+            let audioYoutubeResolvido = false;
+            if (!url && musica.source.toLowerCase() === 'youtube') {
+                url = await obterAudioYoutube(musica.id) ?? '';
+                audioYoutubeResolvido = !!url;
+                if (requisicao !== requisicaoAtual.current) return;
+            }
             if (!url && musica.streamUrl) {
                 url = urlStreamCompleta(musica.streamUrl);
+                if (musica.source.toLowerCase() === 'youtube' && !audioYoutubeResolvido) {
+                    const resposta = await fetch(url, { method: 'HEAD' });
+                    if (requisicao !== requisicaoAtual.current) return;
+                    if (!resposta.ok && resposta.status !== 405) {
+                        throw new Error('A fonte do YouTube está indisponível. Tente outra fonte.');
+                    }
+                }
             }
             if (!url) {
                 try {
                     const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                    if (requisicao !== requisicaoAtual.current) return;
                     url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
                 } catch (erroResolucao) {
+                    if (requisicao !== requisicaoAtual.current) return;
                     console.warn('[Player] API não encontrou uma fonte de áudio:', erroResolucao);
                     const mensagem = 'Áudio não disponível para esta música no momento.';
                     setErroMsg(mensagem);
@@ -132,6 +153,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 return;
             }
 
+            if (requisicao !== requisicaoAtual.current) return;
             player.replace(url);
 
             // Registra a sessão de mídia antes de iniciar a faixa.
@@ -151,8 +173,11 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
             player.play();
         } catch (e) {
+            if (requisicao !== requisicaoAtual.current) return;
             console.error('[Player] Erro ao tocar:', e);
-            const mensagem = 'Ocorreu uma falha ao iniciar a reprodução. Tente novamente.';
+            const mensagem = e instanceof Error
+                ? e.message
+                : 'Ocorreu uma falha ao iniciar a reprodução. Tente novamente.';
             setErroMsg(mensagem);
             setEstado('erro');
             Alert.alert('Erro ao carregar áudio', mensagem);
@@ -245,6 +270,8 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     }, [player]);
 
     const retomar = useCallback(() => {
+        setErroMsg(null);
+        setEstado('carregando');
         if (faixaAtual) {
             try {
                 player.setActiveForLockScreen(true, {
@@ -265,6 +292,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     }, [player, faixaAtual]);
 
     const parar = useCallback(() => {
+        requisicaoAtual.current += 1;
         player.pause();
         try {
             player.setActiveForLockScreen(false);

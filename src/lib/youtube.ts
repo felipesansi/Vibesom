@@ -27,7 +27,7 @@ const INSTANCIAS_INVIDIOUS = [
 ];
 
 /** Tempo máximo (ms) para cada tentativa de instância. */
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 6_000;
 
 /**
  * Obtém a URL de áudio de um vídeo do YouTube via Piped.
@@ -39,7 +39,12 @@ const TIMEOUT_MS = 10_000;
  * @returns   URL direta do stream de áudio, ou `null` se todas falharem.
  */
 export async function obterAudioYoutube(id: string): Promise<string | null> {
-    const videoId = id.replace('/watch?v=', '').replace('/', '');
+    const idDaUrl = id.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?.*v=|embed\/|shorts\/)|(?:^|\/)watch\?v=)([A-Za-z0-9_-]{11})/i)?.[1];
+    const videoId = idDaUrl ?? id.trim().replace(/^\/+|\/+$/g, '');
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId)) {
+        console.warn('[YouTube] ID de vídeo inválido.');
+        return null;
+    }
 
     // Função para buscar e processar o stream de uma única instância.
     // Rejeita a promise em caso de falha para que Promise.any possa ignorá-la.
