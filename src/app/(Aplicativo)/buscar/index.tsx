@@ -16,6 +16,7 @@ import {
     Musica,
     ResultadoPesquisa,
     buscarArtistasMB,
+    buscarMusicasYoutube,
     formatarDuracao,
     pesquisar
 } from '../../../lib/apiMusica';
@@ -72,7 +73,7 @@ export default function TelaBuscar() {
     const [melhorArtista, setMelhorArtista] = useState<Artista | null>(null);
     const [carregando, setCarregando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
-    const [filtroAtivo, setFiltroAtivo] = useState<'tudo' | 'musicas' | 'playlists' | 'artistas'>('tudo');
+    const [filtroAtivo, setFiltroAtivo] = useState<'tudo' | 'musicas' | 'playlists' | 'artistas' | 'youtube'>('tudo');
     const router = useRouter();
     const navigation = useNavigation<BottomTabNavigationProp<any>>();
     const { width } = useWindowDimensions();
@@ -117,13 +118,18 @@ export default function TelaBuscar() {
             setErro(null);
             setCarregando(true);
             try {
-                const [res, artistasMB] = await Promise.all([
+                const [res, musicasYoutube, artistasMB] = await Promise.all([
                     pesquisar(termoBusca, controlador.signal).catch(() => ({ artistas: [], musicas: [], playlists: [] })),
+                    buscarMusicasYoutube(termoBusca, controlador.signal).catch(() => []),
                     buscarArtistasMB(termoBusca, controlador.signal).catch(() => [])
                 ]);
 
+                const musicasMap = new Map<string, Musica>();
+                [...res.musicas, ...musicasYoutube].forEach(item => musicasMap.set(`${item.source}:${item.id}`, item));
+
                 const resultadosCombinados = {
                     ...res,
+                    musicas: [...musicasMap.values()],
                     artistas: artistasMB.length > 0 ? artistasMB : res.artistas
                 };
 
@@ -225,7 +231,10 @@ export default function TelaBuscar() {
             if (estado === 'tocando') pausar();
             else retomar();
         } else {
-            await tocar(item, resultados.musicas);
+            const fila = item.source.toLowerCase() === 'youtube'
+                ? resultados.musicas.filter(musica => musica.source.toLowerCase() === 'youtube')
+                : resultados.musicas;
+            await tocar(item, fila);
         }
     }, [faixaAtual, estado, tocar, pausar, retomar, resultados.musicas]);
 
@@ -372,7 +381,9 @@ export default function TelaBuscar() {
     }, [router]);
 
     const dadosLista = termoBusca && !carregando && !erro
-        ? (filtroAtivo === 'tudo' ? resultados.musicas.slice(0, 10) : (filtroAtivo === 'musicas' ? resultados.musicas : []))
+        ? (filtroAtivo === 'tudo' ? resultados.musicas.slice(0, 10)
+            : filtroAtivo === 'musicas' ? resultados.musicas
+                : filtroAtivo === 'youtube' ? resultados.musicas.filter(item => item.source.toLowerCase() === 'youtube') : [])
         : [];
 
     const cabecalho = (
@@ -422,6 +433,10 @@ export default function TelaBuscar() {
                         </TouchableOpacity>
                     <TouchableOpacity onPress={() => setFiltroAtivo('musicas')} style={[estilos.filtroBadge, filtroAtivo === 'musicas' && estilos.filtroAtivo]}>
                         <Text style={[estilos.textoFiltro, filtroAtivo === 'musicas' && estilos.textoFiltroAtivo]}>Músicas</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => setFiltroAtivo('youtube')} style={[estilos.filtroBadge, filtroAtivo === 'youtube' && estilos.filtroAtivo]}>
+                        <Ionicons name="logo-youtube" size={14} color={filtroAtivo === 'youtube' ? Tema.texto : '#FF0000'} />
+                        <Text style={[estilos.textoFiltro, filtroAtivo === 'youtube' && estilos.textoFiltroAtivo]}>YouTube</Text>
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => setFiltroAtivo('playlists')} style={[estilos.filtroBadge, filtroAtivo === 'playlists' && estilos.filtroAtivo]}>
                         <Text style={[estilos.textoFiltro, filtroAtivo === 'playlists' && estilos.textoFiltroAtivo]}>Playlists</Text>
@@ -563,9 +578,11 @@ export default function TelaBuscar() {
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
                 ListEmptyComponent={
-                    termoBusca && !carregando && !erro && resultados.musicas.length === 0 && resultados.playlists.length === 0 ? (
-                        <Text style={estilos.vazio}>Nenhum resultado encontrado para "{termoBusca}".</Text>
-                    ) : null
+                    termoBusca && !carregando && !erro && (
+                        filtroAtivo === 'youtube'
+                            ? !resultados.musicas.some(item => item.source.toLowerCase() === 'youtube')
+                            : resultados.musicas.length === 0 && resultados.playlists.length === 0
+                    ) ? <Text style={estilos.vazio}>Nenhum resultado encontrado para "{termoBusca}".</Text> : null
                 }
             />
 

@@ -52,6 +52,17 @@ export default function LayoutAplicativo() {
                     ),
                 }}
             />
+            <Tabs.Screen
+                name="youtube/index"
+                options={{
+                    title: 'YouTube',
+                    tabBarIcon: ({ color, focused }) => (
+                        <View style={[estilos.iconeContainer, focused && estilos.iconeAtivo]}>
+                            <Ionicons name="logo-youtube" size={24} color={focused ? '#FF3333' : color} />
+                        </View>
+                    ),
+                }}
+            />
 
             <Tabs.Screen
                 name="index"

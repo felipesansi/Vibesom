@@ -404,6 +404,29 @@ export async function pesquisar(
     return resultadoVazio;
 }
 
+/** Busca exclusivamente vídeos no endpoint YouTube da VibeSom API. */
+export async function buscarMusicasYoutube(termo: string, signal?: AbortSignal): Promise<Musica[]> {
+    const termoLimpo = termo.trim();
+    if (!termoLimpo) return [];
+    const params = new URLSearchParams({ termo: termoLimpo, limite: '30' });
+    const resposta = await fetch(`${URL_BASE}/youtube/busca?${params.toString()}`, { signal });
+    if (!resposta.ok) {
+        if (resposta.status === 404) return [];
+        throw new Error(`Busca no YouTube indisponível (${resposta.status}).`);
+    }
+    const dados: unknown = await resposta.json();
+    if (!dados || typeof dados !== 'object' || !('musicas' in dados) || !Array.isArray((dados as { musicas: unknown }).musicas)) return [];
+    return (dados as { musicas: Partial<Musica>[] }).musicas.map(item => ({
+        source: 'YouTube',
+        id: String(item.id ?? ''),
+        titulo: item.titulo ?? 'Sem título',
+        artista: item.artista ?? 'Artista desconhecido',
+        capa: item.capa ?? null,
+        duracao: Number(item.duracao ?? 0),
+        streamUrl: `/youtube/stream/${encodeURIComponent(String(item.id ?? ''))}`,
+    })).filter(item => item.id.length > 0);
+}
+
 //  todas as musicas por artista
 
 export async function pesquisarMusicasPorArtista(

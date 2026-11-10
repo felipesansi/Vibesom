@@ -10,7 +10,6 @@ import React, {
 import { Alert } from 'react-native';
 import { Musica, pesquisar, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
-import { obterAudioYoutube } from '../lib/youtube';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
@@ -185,21 +184,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setFaixaAtual(musica);
 
             let url = obterArquivoMusicaBaixada(musica) ?? '';
-            let audioYoutubeResolvido = false;
             if (!url && musica.source.toLowerCase() === 'youtube') {
-                url = await obterAudioYoutube(musica.id) ?? '';
-                audioYoutubeResolvido = !!url;
-                if (requisicao !== requisicaoAtual.current) return;
-            }
-            if (!url && musica.streamUrl) {
+                url = urlStreamCompleta(`/youtube/stream/${encodeURIComponent(musica.id)}`);
+            } else if (!url && musica.streamUrl) {
                 url = urlStreamCompleta(musica.streamUrl);
-                if (musica.source.toLowerCase() === 'youtube' && !audioYoutubeResolvido) {
-                    const resposta = await fetch(url, { method: 'HEAD' });
-                    if (requisicao !== requisicaoAtual.current) return;
-                    if (!resposta.ok && resposta.status !== 405) {
-                        throw new Error('A fonte do YouTube está indisponível. Tente outra fonte.');
-                    }
-                }
             }
             if (!url) {
                 try {
