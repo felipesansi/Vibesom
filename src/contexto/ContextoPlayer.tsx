@@ -8,7 +8,7 @@ import React, {
     useState
 } from 'react';
 import { Alert } from 'react-native';
-import { Musica, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
+import { Musica, pesquisar, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
 import { obterAudioYoutube } from '../lib/youtube';
 
@@ -47,6 +47,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const [repetir, setRepetir] = useState(false);
     const [aleatorio, setAleatorio] = useState(false);
     const requisicaoAtual = useRef(0);
+    const iniciarAoCarregar = useRef(false);
+    const tentouFallbackRef = useRef(false);
+    const alternativasRef = useRef<Musica[]>([]);
+    const indiceAlternativaRef = useRef(0);
 
     const player = useAudioPlayer(null);
     const status = useAudioPlayerStatus(player);
@@ -82,13 +86,78 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         }
     }, [status.playing, status.isLoaded, status.isBuffering, faixaAtual, erroMsg, estado]);
 
+    // HLS (SoundCloud) pode levar alguns segundos para carregar o manifesto.
+    // Iniciar somente quando o player reportar a fonte pronta evita perder o
+    // comando play enviado logo após replace() em conexões móveis lentas.
+    useEffect(() => {
+        if (!iniciarAoCarregar.current || !status.isLoaded) return;
+        iniciarAoCarregar.current = false;
+        player.play();
+    }, [status.isLoaded, player]);
+
     // Alguns provedores encerram a conexão sem propagar um erro nativo. Evita
     // que a interface fique carregando indefinidamente nesses casos.
     useEffect(() => {
         if (!faixaAtual || estado !== 'carregando') return;
 
-        const limite = setTimeout(() => {
-            const mensagem = 'A fonte de áudio demorou demais para responder. Tente outra fonte ou música.';
+        const limite = setTimeout(async () => {
+            const requisicao = requisicaoAtual.current;
+            if (!tentouFallbackRef.current && faixaAtual) {
+                tentouFallbackRef.current = true;
+                try {
+                    const { musicas } = await pesquisar(`${faixaAtual.artista} ${faixaAtual.titulo}`);
+                    if (requisicao !== requisicaoAtual.current) return;
+                    const vistos = new Set([`${faixaAtual.source}:${faixaAtual.id}`]);
+                    alternativasRef.current = musicas.filter(item => {
+                        const key = `${item.source}:${item.id}`;
+                        if (!item.streamUrl || vistos.has(key)) return false;
+                        vistos.add(key);
+                        return true;
+                    });
+                    indiceAlternativaRef.current = 0;
+                } catch (erro) {
+                    console.warn('[Player] Não foi possível buscar fontes alternativas:', erro);
+                }
+            }
+
+            const tentarProximaAlternativa = async (): Promise<boolean> => {
+                while (indiceAlternativaRef.current < alternativasRef.current.length) {
+                const alternativa = alternativasRef.current[indiceAlternativaRef.current++];
+                if (requisicao !== requisicaoAtual.current) return false;
+                const urlFallback = urlStreamCompleta(alternativa.streamUrl);
+                try {
+                    const resposta = await fetch(urlFallback, { method: 'HEAD' });
+                    if (requisicao !== requisicaoAtual.current) return false;
+                    if (!resposta.ok && resposta.status !== 405) continue;
+                } catch {
+                    continue;
+                }
+
+                setFaixaAtual(alternativa);
+                setErroMsg(null);
+                setEstado('carregando');
+                iniciarAoCarregar.current = true;
+                player.replace({ uri: urlFallback });
+                setTimeout(() => {
+                    if (requisicao !== requisicaoAtual.current || player.playing) return;
+                    void tentarProximaAlternativa().then(tentou => {
+                        if (!tentou) {
+                            const mensagem = 'As fontes encontradas não responderam. Tente outra música.';
+                            player.pause();
+                            setErroMsg(mensagem);
+                            setEstado('erro');
+                            Alert.alert('Não foi possível reproduzir', mensagem);
+                        }
+                    });
+                }, 20_000);
+                return true;
+                }
+                return false;
+            };
+
+            if (await tentarProximaAlternativa()) return;
+
+            const mensagem = 'As fontes encontradas não responderam. Tente outra música.';
             player.pause();
             setErroMsg(mensagem);
             setEstado('erro');
@@ -100,6 +169,9 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
         const requisicao = ++requisicaoAtual.current;
+        tentouFallbackRef.current = false;
+        alternativasRef.current = [];
+        indiceAlternativaRef.current = 0;
         try {
             setEstado('carregando');
             setErroMsg(null);
@@ -145,6 +217,27 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 }
             }
 
+            // Faixas vindas de busca costumam ter streamUrl relativa. Caso o
+            // endpoint de stream da plataforma falhe, tenta o resolvedor geral.
+            if (url && musica.streamUrl && !obterArquivoMusicaBaixada(musica)) {
+                try {
+                    const resposta = await fetch(url, { method: 'HEAD' });
+                    if (requisicao !== requisicaoAtual.current) return;
+                    if (!resposta.ok && resposta.status !== 405) url = '';
+                } catch {
+                    url = '';
+                }
+                if (!url) {
+                    try {
+                        const resolucao = await resolverAudio(musica.artista, musica.titulo);
+                        if (requisicao !== requisicaoAtual.current) return;
+                        url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
+                    } catch {
+                        url = '';
+                    }
+                }
+            }
+
             if (!url) {
                 const mensagem = 'Não encontramos uma fonte de áudio válida para esta faixa.';
                 setErroMsg(mensagem);
@@ -154,7 +247,8 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             }
 
             if (requisicao !== requisicaoAtual.current) return;
-            player.replace(url);
+            iniciarAoCarregar.current = true;
+            player.replace({ uri: url });
 
             // Registra a sessão de mídia antes de iniciar a faixa.
             try {
@@ -171,7 +265,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 console.warn('[Player] Controles do sistema indisponíveis:', erro);
             }
 
+            // `replace` começa o carregamento em background. Iniciar aqui
+            // conserva o autoplay enquanto o HLS resolve o manifesto.
             player.play();
+
         } catch (e) {
             if (requisicao !== requisicaoAtual.current) return;
             console.error('[Player] Erro ao tocar:', e);
@@ -293,6 +390,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     const parar = useCallback(() => {
         requisicaoAtual.current += 1;
+        iniciarAoCarregar.current = false;
         player.pause();
         try {
             player.setActiveForLockScreen(false);
