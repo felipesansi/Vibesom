@@ -1,4 +1,5 @@
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { router } from 'expo-router';
 import React, {
     createContext,
     useCallback,
@@ -108,6 +109,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                     if (requisicao !== requisicaoAtual.current) return;
                     const vistos = new Set([`${faixaAtual.source}:${faixaAtual.id}`]);
                     alternativasRef.current = musicas.filter(item => {
+                        if (item.source.toLowerCase() === 'youtube') return false;
                         const key = `${item.source}:${item.id}`;
                         if (!item.streamUrl || vistos.has(key)) return false;
                         vistos.add(key);
@@ -124,13 +126,6 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 const alternativa = alternativasRef.current[indiceAlternativaRef.current++];
                 if (requisicao !== requisicaoAtual.current) return false;
                 const urlFallback = urlStreamCompleta(alternativa.streamUrl);
-                try {
-                    const resposta = await fetch(urlFallback, { method: 'HEAD' });
-                    if (requisicao !== requisicaoAtual.current) return false;
-                    if (!resposta.ok && resposta.status !== 405) continue;
-                } catch {
-                    continue;
-                }
 
                 setFaixaAtual(alternativa);
                 setErroMsg(null);
@@ -167,6 +162,12 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     }, [faixaAtual?.id, faixaAtual?.source, estado, player]);
 
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
+        if (musica.source.toLowerCase() === 'youtube') {
+            player.pause();
+            router.push({ pathname: '/youtube/index', params: { videoId: musica.id } });
+            return;
+        }
+
         const requisicao = ++requisicaoAtual.current;
         tentouFallbackRef.current = false;
         alternativasRef.current = [];
@@ -184,9 +185,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setFaixaAtual(musica);
 
             let url = obterArquivoMusicaBaixada(musica) ?? '';
-            if (!url && musica.source.toLowerCase() === 'youtube') {
-                url = urlStreamCompleta(`/youtube/stream/${encodeURIComponent(musica.id)}`);
-            } else if (!url && musica.streamUrl) {
+            if (!url && musica.streamUrl) {
                 url = urlStreamCompleta(musica.streamUrl);
             }
             if (!url) {
@@ -202,27 +201,6 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                     setEstado('erro');
                     Alert.alert('Não foi possível reproduzir', mensagem);
                     return;
-                }
-            }
-
-            // Faixas vindas de busca costumam ter streamUrl relativa. Caso o
-            // endpoint de stream da plataforma falhe, tenta o resolvedor geral.
-            if (url && musica.streamUrl && !obterArquivoMusicaBaixada(musica)) {
-                try {
-                    const resposta = await fetch(url, { method: 'HEAD' });
-                    if (requisicao !== requisicaoAtual.current) return;
-                    if (!resposta.ok && resposta.status !== 405) url = '';
-                } catch {
-                    url = '';
-                }
-                if (!url) {
-                    try {
-                        const resolucao = await resolverAudio(musica.artista, musica.titulo);
-                        if (requisicao !== requisicaoAtual.current) return;
-                        url = urlStreamCompleta(resolucao.url || resolucao.streamUrl || '');
-                    } catch {
-                        url = '';
-                    }
                 }
             }
 

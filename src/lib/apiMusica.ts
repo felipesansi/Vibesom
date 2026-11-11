@@ -423,8 +423,8 @@ export async function buscarMusicasYoutube(termo: string, signal?: AbortSignal):
         artista: item.artista ?? 'Artista desconhecido',
         capa: item.capa ?? null,
         duracao: Number(item.duracao ?? 0),
-        streamUrl: `/youtube/stream/${encodeURIComponent(String(item.id ?? ''))}`,
-    })).filter(item => item.id.length > 0);
+        streamUrl: '',
+    })).filter(item => /^[A-Za-z0-9_-]{11}$/.test(item.id));
 }
 
 //  todas as musicas por artista
@@ -927,6 +927,7 @@ export async function buscarFontesDeAudio(
 
         const candidatos = musicas
             .map(c => ({ ...c, pontuacao: pontuarCandidato(c) }))
+            .filter(c => c.source.toLowerCase() !== 'youtube')
             .filter(c => c.pontuacao > 0 && typeof c.streamUrl === 'string' && c.streamUrl.trim().length > 0)
             .sort((a, b) => b.pontuacao - a.pontuacao);
 

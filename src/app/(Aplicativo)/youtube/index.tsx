@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -12,8 +13,8 @@ import {
     View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 import Tema from '../../../../constantes/Cores';
-import { usePlayer } from '../../../contexto/ContextoPlayer';
 import { buscarMusicasYoutube, formatarDuracao, Musica } from '../../../lib/apiMusica';
 
 const PESQUISAS_RAPIDAS = ['Músicas em alta', 'Lo-fi', 'Ao vivo', 'Acústico'];
@@ -24,48 +25,60 @@ export default function TelaYouTube() {
     const [resultados, setResultados] = useState<Musica[]>([]);
     const [carregando, setCarregando] = useState(false);
     const [erro, setErro] = useState<string | null>(null);
-    const { faixaAtual, estado, lista, posicao, duracao, tocar, pausar, retomar, proxima, anterior } = usePlayer();
+    const buscaAtual = useRef<AbortController | null>(null);
+    const [videoSelecionado, setVideoSelecionado] = useState<Musica | null>(null);
+    const [carregandoPlayer, setCarregandoPlayer] = useState(false);
+    const [erroPlayer, setErroPlayer] = useState<string | null>(null);
+    const parametros = useLocalSearchParams<{ videoId?: string }>();
 
-    const filaYouTube = useMemo(
-        () => lista.filter(item => item.source.toLowerCase() === 'youtube'),
-        [lista],
-    );
-    const atualEhYouTube = faixaAtual?.source.toLowerCase() === 'youtube';
-    const carregandoFaixa = atualEhYouTube && estado === 'carregando';
-    const tocandoFaixa = atualEhYouTube && estado === 'tocando';
-    const progresso = duracao > 0 && atualEhYouTube ? Math.min(100, (posicao / duracao) * 100) : 0;
+    useEffect(() => () => buscaAtual.current?.abort(), []);
+
+    useEffect(() => {
+        const id = Array.isArray(parametros.videoId) ? parametros.videoId[0] : parametros.videoId;
+        if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) return;
+        setVideoSelecionado({
+            source: 'YouTube',
+            id,
+            titulo: 'Vídeo do YouTube',
+            artista: '',
+            capa: `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+            duracao: 0,
+            streamUrl: '',
+        });
+    }, [parametros.videoId]);
 
     const buscar = useCallback(async (texto = consulta) => {
         const busca = texto.trim();
         if (!busca) return;
+        buscaAtual.current?.abort();
+        const controlador = new AbortController();
+        buscaAtual.current = controlador;
         Keyboard.dismiss();
         setConsulta(busca);
         setTermo(busca);
         setCarregando(true);
         setErro(null);
         try {
-            const musicas = await buscarMusicasYoutube(busca);
+            const musicas = await buscarMusicasYoutube(busca, controlador.signal);
+            if (controlador.signal.aborted) return;
             setResultados(musicas);
             if (!musicas.length) setErro('Não encontramos vídeos para essa busca.');
         } catch (e) {
+            if (controlador.signal.aborted) return;
             setResultados([]);
             setErro(e instanceof Error ? e.message : 'Não foi possível buscar no YouTube.');
         } finally {
-            setCarregando(false);
+            if (!controlador.signal.aborted) setCarregando(false);
         }
     }, [consulta]);
 
-    const tocarVideo = useCallback((musica: Musica) => {
-        void tocar(musica, resultados);
-    }, [resultados, tocar]);
-
     const renderVideo = useCallback(({ item, index }: { item: Musica; index: number }) => {
-        const estaTocando = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
+        const estaSelecionado = videoSelecionado?.id === item.id;
         return (
             <TouchableOpacity
-                style={[estilos.video, estaTocando && estilos.videoAtivo]}
+                style={[estilos.video, estaSelecionado && estilos.videoAtivo]}
                 activeOpacity={0.78}
-                onPress={() => tocarVideo(item)}
+                onPress={() => setVideoSelecionado(item)}
             >
                 <View style={estilos.miniaturaWrap}>
                     {item.capa
@@ -77,12 +90,12 @@ export default function TelaYouTube() {
                 <View style={estilos.videoInfo}>
                     <Text style={estilos.tituloVideo} numberOfLines={2}>{item.titulo}</Text>
                     <Text style={estilos.canal} numberOfLines={1}>{item.artista}</Text>
-                    <Text style={estilos.indice}>{estaTocando ? 'Tocando agora' : `Resultado ${index + 1}`}</Text>
+                    <Text style={estilos.indice}>{estaSelecionado ? 'Aberto no player' : `Resultado ${index + 1}`}</Text>
                 </View>
-                <Ionicons name={estaTocando && tocandoFaixa ? 'pause-circle' : 'play-circle'} size={29} color={estaTocando ? '#FF3333' : Tema.textoSuave} />
+                <Ionicons name="play-circle" size={29} color={estaSelecionado ? '#FF3333' : Tema.textoSuave} />
             </TouchableOpacity>
         );
-    }, [faixaAtual?.id, faixaAtual?.source, tocarVideo, tocandoFaixa]);
+    }, [videoSelecionado?.id]);
 
     return (
         <SafeAreaView style={estilos.container} edges={['top', 'left', 'right']}>
@@ -98,9 +111,61 @@ export default function TelaYouTube() {
                             <View style={estilos.logo}><Ionicons name="logo-youtube" size={25} color="#FFF" /></View>
                             <View style={{ flex: 1 }}>
                                 <Text style={estilos.titulo}>YouTube</Text>
-                                <Text style={estilos.subtitulo}>Busque músicas e ouça somente o áudio</Text>
+                                <Text style={estilos.subtitulo}>Busque e reproduza no player oficial</Text>
                             </View>
                         </View>
+
+                        {videoSelecionado && (
+                            <View style={estilos.playerCard}>
+                                <View style={estilos.playerTopo}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={estilos.tocandoLabel}>PLAYER OFICIAL DO YOUTUBE</Text>
+                                        <Text style={estilos.atualTitulo} numberOfLines={2}>{videoSelecionado.titulo}</Text>
+                                        {!!videoSelecionado.artista && (
+                                            <Text style={estilos.atualCanal} numberOfLines={1}>{videoSelecionado.artista}</Text>
+                                        )}
+                                    </View>
+                                    <TouchableOpacity
+                                        accessibilityLabel="Fechar vídeo"
+                                        onPress={() => setVideoSelecionado(null)}
+                                        style={estilos.fecharPlayer}
+                                    >
+                                        <Ionicons name="close" size={21} color={Tema.textoSuave} />
+                                    </TouchableOpacity>
+                                </View>
+                                <View style={estilos.videoPlayer}>
+                                    <WebView
+                                        key={videoSelecionado.id}
+                                        source={{
+                                            uri: `https://www.youtube-nocookie.com/embed/${videoSelecionado.id}?playsinline=1&controls=1&autoplay=0&rel=0`,
+                                        }}
+                                        style={estilos.webView}
+                                        containerStyle={estilos.webViewContainer}
+                                        allowsFullscreenVideo
+                                        allowsInlineMediaPlayback
+                                        mediaPlaybackRequiresUserAction
+                                        onLoadStart={() => {
+                                            setCarregandoPlayer(true);
+                                            setErroPlayer(null);
+                                        }}
+                                        onLoadEnd={() => setCarregandoPlayer(false)}
+                                        onError={() => {
+                                            setCarregandoPlayer(false);
+                                            setErroPlayer('Não foi possível carregar o player oficial do YouTube.');
+                                        }}
+                                    />
+                                    {carregandoPlayer && (
+                                        <View style={estilos.carregandoPlayer}>
+                                            <ActivityIndicator color="#FF3333" />
+                                        </View>
+                                    )}
+                                </View>
+                                {!!erroPlayer && <Text style={estilos.erro}>{erroPlayer}</Text>}
+                                <Text style={estilos.textoDica}>
+                                    Use os controles do YouTube para iniciar a reprodução. O áudio em segundo plano depende das regras do YouTube.
+                                </Text>
+                            </View>
+                        )}
 
                         <View style={estilos.buscaLinha}>
                             <Ionicons name="search" size={20} color={Tema.textoSuave} />
@@ -113,7 +178,7 @@ export default function TelaYouTube() {
                                 returnKeyType="search"
                                 style={estilos.input}
                             />
-                            {consulta.length > 0 && <TouchableOpacity onPress={() => { setConsulta(''); setTermo(''); setResultados([]); setErro(null); }}><Ionicons name="close-circle" size={19} color={Tema.textoSuave} /></TouchableOpacity>}
+                            {consulta.length > 0 && <TouchableOpacity onPress={() => { buscaAtual.current?.abort(); buscaAtual.current = null; setConsulta(''); setTermo(''); setResultados([]); setErro(null); setCarregando(false); }}><Ionicons name="close-circle" size={19} color={Tema.textoSuave} /></TouchableOpacity>}
                             <TouchableOpacity onPress={() => void buscar()} disabled={carregando} style={estilos.botaoBuscar}>
                                 {carregando ? <ActivityIndicator size="small" color="#FFF" /> : <Ionicons name="arrow-forward" size={20} color="#FFF" />}
                             </TouchableOpacity>
@@ -131,32 +196,9 @@ export default function TelaYouTube() {
                                 </View>
                                 <View style={estilos.dica}>
                                     <Ionicons name="headset-outline" size={21} color="#FF5555" />
-                                    <Text style={estilos.textoDica}>Toque em uma faixa para ouvir. A fila inclui os resultados de áudio desta busca.</Text>
+                                    <Text style={estilos.textoDica}>Toque em um resultado para abri-lo no player oficial incorporado.</Text>
                                 </View>
                             </>
-                        )}
-
-                        {atualEhYouTube && faixaAtual && (
-                            <View style={estilos.playerCard}>
-                                <View style={estilos.playerTopo}>
-                                    {faixaAtual.capa ? <Image source={{ uri: faixaAtual.capa }} style={estilos.capaAtual} /> : <View style={[estilos.capaAtual, estilos.semMiniatura]}><Ionicons name="logo-youtube" size={25} color="#FF0000" /></View>}
-                                    <View style={estilos.atualInfo}>
-                                        <Text style={estilos.tocandoLabel}>TOCANDO NO YOUTUBE</Text>
-                                        <Text style={estilos.atualTitulo} numberOfLines={1}>{faixaAtual.titulo}</Text>
-                                        <Text style={estilos.atualCanal} numberOfLines={1}>{faixaAtual.artista}</Text>
-                                    </View>
-                                </View>
-                                <View style={estilos.trilho}><View style={[estilos.progresso, { width: `${progresso}%` }]} /></View>
-                                <View style={estilos.tempos}><Text style={estilos.tempo}>{formatarDuracao(posicao)}</Text><Text style={estilos.tempo}>{formatarDuracao(duracao)}</Text></View>
-                                <View style={estilos.controles}>
-                                    <TouchableOpacity onPress={anterior}><Ionicons name="play-skip-back" size={25} color={Tema.textoSecundario} /></TouchableOpacity>
-                                    <TouchableOpacity style={estilos.botaoPlay} onPress={() => tocandoFaixa ? pausar() : retomar()}>
-                                        {carregandoFaixa ? <ActivityIndicator color="#FFF" /> : <Ionicons name={tocandoFaixa ? 'pause' : 'play'} size={27} color="#FFF" />}
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={proxima}><Ionicons name="play-skip-forward" size={25} color={Tema.textoSecundario} /></TouchableOpacity>
-                                    <View style={estilos.contagemFila}><Ionicons name="list" size={17} color={Tema.textoSuave} /><Text style={estilos.textoFila}>{filaYouTube.length} na fila</Text></View>
-                                </View>
-                            </View>
                         )}
 
                         {!!termo && <Text style={estilos.rotuloSecao}>Faixas encontradas para “{termo}”</Text>}
@@ -187,6 +229,16 @@ const estilos = StyleSheet.create({
     textoDica: { flex: 1, color: Tema.textoSecundario, lineHeight: 19, fontSize: 13 },
     video: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, backgroundColor: Tema.superficie, borderRadius: 16, borderWidth: 1, borderColor: Tema.borda },
     videoAtivo: { borderColor: '#E62117' },
+    playerCard: { backgroundColor: Tema.superficie, borderWidth: 1, borderColor: Tema.borda, borderRadius: 18, padding: 14, marginBottom: 8 },
+    playerTopo: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 },
+    tocandoLabel: { color: '#FF5555', fontSize: 10, fontWeight: '900', letterSpacing: .7 },
+    atualTitulo: { color: Tema.texto, fontSize: 15, fontWeight: '800', marginTop: 5 },
+    atualCanal: { color: Tema.textoSecundario, fontSize: 12, marginTop: 3 },
+    fecharPlayer: { padding: 7 },
+    videoPlayer: { height: 210, position: 'relative', backgroundColor: '#000', borderRadius: 12, overflow: 'hidden' },
+    webView: { flex: 1, backgroundColor: '#000' },
+    webViewContainer: { backgroundColor: '#000' },
+    carregandoPlayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
     miniaturaWrap: { position: 'relative' },
     miniatura: { width: 116, height: 70, borderRadius: 10, backgroundColor: Tema.superficieClara },
     semMiniatura: { alignItems: 'center', justifyContent: 'center' },
@@ -196,21 +248,6 @@ const estilos = StyleSheet.create({
     tituloVideo: { color: Tema.texto, fontSize: 14, lineHeight: 18, fontWeight: '700' },
     canal: { color: Tema.textoSecundario, fontSize: 12 },
     indice: { color: Tema.textoSuave, fontSize: 11 },
-    playerCard: { backgroundColor: Tema.superficie, borderWidth: 1, borderColor: Tema.borda, borderRadius: 18, padding: 14, marginTop: 18 },
-    playerTopo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-    capaAtual: { width: 62, height: 62, borderRadius: 12, backgroundColor: Tema.superficieClara },
-    atualInfo: { flex: 1, gap: 4 },
-    tocandoLabel: { color: '#FF5555', fontSize: 10, fontWeight: '900', letterSpacing: .7 },
-    atualTitulo: { color: Tema.texto, fontSize: 15, fontWeight: '800' },
-    atualCanal: { color: Tema.textoSecundario, fontSize: 12 },
-    trilho: { height: 4, borderRadius: 2, backgroundColor: Tema.superficieClara, overflow: 'hidden', marginTop: 15 },
-    progresso: { height: 4, backgroundColor: '#FF3333' },
-    tempos: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 5 },
-    tempo: { color: Tema.textoSuave, fontSize: 10 },
-    controles: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 26, marginTop: 12 },
-    botaoPlay: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#E62117', alignItems: 'center', justifyContent: 'center' },
-    contagemFila: { position: 'absolute', right: 0, flexDirection: 'row', alignItems: 'center', gap: 4 },
-    textoFila: { color: Tema.textoSuave, fontSize: 11 },
     erro: { color: Tema.erro, paddingVertical: 16 },
     vazio: { color: Tema.textoSuave, textAlign: 'center', paddingVertical: 26 },
 });

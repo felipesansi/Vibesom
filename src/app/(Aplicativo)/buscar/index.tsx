@@ -226,17 +226,19 @@ export default function TelaBuscar() {
     }, []);
 
     const aoTocar = useCallback(async (item: Musica) => {
+        if (item.source.toLowerCase() === 'youtube') {
+            router.push({ pathname: '/youtube/index', params: { videoId: item.id } });
+            return;
+        }
+
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         if (ehAtual) {
             if (estado === 'tocando') pausar();
             else retomar();
         } else {
-            const fila = item.source.toLowerCase() === 'youtube'
-                ? resultados.musicas.filter(musica => musica.source.toLowerCase() === 'youtube')
-                : resultados.musicas;
-            await tocar(item, fila);
+            await tocar(item, resultados.musicas);
         }
-    }, [faixaAtual, estado, tocar, pausar, retomar, resultados.musicas]);
+    }, [router, faixaAtual, estado, tocar, pausar, retomar, resultados.musicas]);
 
     const abrirMenu = useCallback((musica: Musica) => {
         setMenuMusica(musica);
@@ -649,14 +651,30 @@ export default function TelaBuscar() {
                                     {/* Opção 2: Adicionar à fila */}
                                     <TouchableOpacity
                                         style={estilos.menuOpcao}
-                                        onPress={() => { adicionarAFila(menuMusica); fecharMenu(); }}
+                                        onPress={() => {
+                                            const musica = menuMusica;
+                                            fecharMenu();
+                                            if (musica.source.toLowerCase() === 'youtube') {
+                                                router.push({ pathname: '/youtube/index', params: { videoId: musica.id } });
+                                            } else {
+                                                adicionarAFila(musica);
+                                            }
+                                        }}
                                     >
                                         <View style={[estilos.menuIconeWrapper, { backgroundColor: '#6366F1' + '22' }]}>
-                                            <Ionicons name="list" size={24} color="#6366F1" />
+                                            <Ionicons
+                                                name={menuMusica.source.toLowerCase() === 'youtube' ? 'logo-youtube' : 'list'}
+                                                size={24}
+                                                color={menuMusica.source.toLowerCase() === 'youtube' ? '#FF0000' : '#6366F1'}
+                                            />
                                         </View>
                                         <View style={estilos.menuOpcaoTexto}>
-                                            <Text style={estilos.menuOpcaoLabel}>Adicionar à fila</Text>
-                                            <Text style={estilos.menuOpcaoDesc}>Tocar após a música atual</Text>
+                                            <Text style={estilos.menuOpcaoLabel}>
+                                                {menuMusica.source.toLowerCase() === 'youtube' ? 'Assistir no YouTube' : 'Adicionar à fila'}
+                                            </Text>
+                                            <Text style={estilos.menuOpcaoDesc}>
+                                                {menuMusica.source.toLowerCase() === 'youtube' ? 'Abrir no player oficial incorporado' : 'Tocar após a música atual'}
+                                            </Text>
                                         </View>
                                         <Ionicons name="chevron-forward" size={16} color={Tema.textoSuave} />
                                     </TouchableOpacity>
