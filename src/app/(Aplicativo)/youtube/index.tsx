@@ -6,6 +6,7 @@ import {
     FlatList,
     Image,
     Keyboard,
+    Linking,
     StyleSheet,
     Text,
     TextInput,
@@ -19,6 +20,28 @@ import { buscarMusicasYoutube, formatarDuracao, Musica } from '../../../lib/apiM
 
 const PESQUISAS_RAPIDAS = ['Músicas em alta', 'Lo-fi', 'Ao vivo', 'Acústico'];
 
+type EstadoYouTube = -1 | 0 | 1 | 2 | 3 | 5;
+
+function criarHtmlPlayer(videoId: string) {
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><style>*{box-sizing:border-box}html,body,#player{margin:0;width:100%;height:100%;background:#000;overflow:hidden}</style></head><body><div id="player"></div><script>
+      const id=${JSON.stringify(videoId)};
+      const enviar=(extra={})=>{try{window.ReactNativeWebView.postMessage(JSON.stringify({type:'status',state:player&&player.getPlayerState?player.getPlayerState():-1,time:player&&player.getCurrentTime?player.getCurrentTime():0,duration:player&&player.getDuration?player.getDuration():0,...extra}))}catch(e){}};
+      let player;
+      window.vibesomPlayerCommand=(command)=>{if(!player)return;switch(command.action){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'toggle':player.getPlayerState()===1?player.pauseVideo():player.playVideo();break;case'seek':player.seekTo(command.time,true);break;case'back':player.seekTo(Math.max(0,player.getCurrentTime()-10),true);break;case'forward':player.seekTo(Math.min(player.getDuration(),player.getCurrentTime()+10),true);break;}};
+      const tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);
+      window.onYouTubeIframeAPIReady=()=>{player=new YT.Player('player',{videoId:id,host:'https://www.youtube-nocookie.com',playerVars:{autoplay:1,controls:1,playsinline:1,rel:0,fs:1,enablejsapi:1,origin:'https://www.youtube-nocookie.com',iv_load_policy:3},events:{onReady:()=>enviar(),onStateChange:e=>enviar({state:e.data}),onError:e=>enviar({error:e.data})}});setInterval(()=>enviar(),700)};
+    </script></body></html>`;
+}
+
+function textoErroYouTube(codigo?: number) {
+    if (codigo === 2) return 'O YouTube rejeitou o identificador deste vídeo.';
+    if (codigo === 5) return 'Este vídeo não pode ser reproduzido neste player.';
+    if (codigo === 100) return 'Este vídeo foi removido, está privado ou não está disponível.';
+    if (codigo === 101 || codigo === 150) return 'O proprietário não permite a reprodução incorporada deste vídeo. Abra-o no YouTube.';
+    if (codigo === 153) return 'O YouTube não aceitou a identificação da reprodução incorporada. Abra-o no YouTube.';
+    return 'O YouTube não conseguiu reproduzir este vídeo. Tente abri-lo no YouTube.';
+}
+
 export default function TelaYouTube() {
     const [consulta, setConsulta] = useState('');
     const [termo, setTermo] = useState('');
@@ -29,9 +52,26 @@ export default function TelaYouTube() {
     const [videoSelecionado, setVideoSelecionado] = useState<Musica | null>(null);
     const [carregandoPlayer, setCarregandoPlayer] = useState(false);
     const [erroPlayer, setErroPlayer] = useState<string | null>(null);
+    const [estadoPlayer, setEstadoPlayer] = useState<EstadoYouTube>(-1);
+    const [progresso, setProgresso] = useState({ tempo: 0, duracao: 0 });
+    const [larguraSeek, setLarguraSeek] = useState(0);
+    const [indiceFila, setIndiceFila] = useState(-1);
+    const webViewRef = useRef<WebView<{}>>(null);
+    const ultimoEstadoRef = useRef<EstadoYouTube>(-1);
     const parametros = useLocalSearchParams<{ videoId?: string }>();
 
     useEffect(() => () => buscaAtual.current?.abort(), []);
+
+    useEffect(() => {
+        if (!videoSelecionado || !carregandoPlayer) return;
+
+        const timeout = setTimeout(() => {
+            setCarregandoPlayer(false);
+            setErroPlayer('O player do YouTube está demorando para responder. Verifique sua conexão e tente novamente.');
+        }, 15_000);
+
+        return () => clearTimeout(timeout);
+    }, [videoSelecionado?.id, carregandoPlayer]);
 
     useEffect(() => {
         const id = Array.isArray(parametros.videoId) ? parametros.videoId[0] : parametros.videoId;
@@ -45,7 +85,54 @@ export default function TelaYouTube() {
             duracao: 0,
             streamUrl: '',
         });
+        setIndiceFila(-1);
     }, [parametros.videoId]);
+
+    const enviarComandoPlayer = useCallback((action: string, time?: number) => {
+        const comando = JSON.stringify({ action, ...(time === undefined ? {} : { time }) });
+        webViewRef.current?.injectJavaScript(`window.vibesomPlayerCommand&&window.vibesomPlayerCommand(${comando});true;`);
+    }, []);
+
+    const selecionarVideo = useCallback((item: Musica) => {
+        const indice = resultados.findIndex(resultado => resultado.id === item.id);
+        setIndiceFila(indice);
+        setEstadoPlayer(-1);
+        ultimoEstadoRef.current = -1;
+        setProgresso({ tempo: 0, duracao: item.duracao || 0 });
+        setErroPlayer(null);
+        setCarregandoPlayer(true);
+        setVideoSelecionado(item);
+    }, [resultados]);
+
+    const aoReceberMensagem = useCallback((event: { nativeEvent: { data: string } }) => {
+        try {
+            const mensagem = JSON.parse(event.nativeEvent.data) as { state?: EstadoYouTube; time?: number; duration?: number; error?: number };
+            if (mensagem.error !== undefined) {
+                setCarregandoPlayer(false);
+                setErroPlayer(textoErroYouTube(mensagem.error));
+                return;
+            }
+            if (mensagem.state !== undefined) {
+                setEstadoPlayer(mensagem.state);
+                setCarregandoPlayer(mensagem.state === -1 || mensagem.state === 3);
+                if (mensagem.state === 1) setErroPlayer(null);
+                if (mensagem.state === 0 && ultimoEstadoRef.current !== 0 && indiceFila >= 0 && indiceFila + 1 < resultados.length) {
+                    selecionarVideo(resultados[indiceFila + 1]);
+                }
+                ultimoEstadoRef.current = mensagem.state;
+            }
+            if (typeof mensagem.time === 'number' && typeof mensagem.duration === 'number') {
+                setProgresso({ tempo: mensagem.time, duracao: mensagem.duration });
+            }
+        } catch {
+            // Ignora mensagens não relacionadas ao estado do player.
+        }
+    }, [indiceFila, resultados, selecionarVideo]);
+
+    const avancarFila = useCallback((delta: number) => {
+        const proximo = indiceFila + delta;
+        if (proximo >= 0 && proximo < resultados.length) selecionarVideo(resultados[proximo]);
+    }, [indiceFila, resultados, selecionarVideo]);
 
     const buscar = useCallback(async (texto = consulta) => {
         const busca = texto.trim();
@@ -78,7 +165,7 @@ export default function TelaYouTube() {
             <TouchableOpacity
                 style={[estilos.video, estaSelecionado && estilos.videoAtivo]}
                 activeOpacity={0.78}
-                onPress={() => setVideoSelecionado(item)}
+                onPress={() => selecionarVideo(item)}
             >
                 <View style={estilos.miniaturaWrap}>
                     {item.capa
@@ -95,7 +182,7 @@ export default function TelaYouTube() {
                 <Ionicons name="play-circle" size={29} color={estaSelecionado ? '#FF3333' : Tema.textoSuave} />
             </TouchableOpacity>
         );
-    }, [videoSelecionado?.id]);
+    }, [videoSelecionado?.id, selecionarVideo]);
 
     return (
         <SafeAreaView style={estilos.container} edges={['top', 'left', 'right']}>
@@ -134,21 +221,23 @@ export default function TelaYouTube() {
                                     </TouchableOpacity>
                                 </View>
                                 <View style={estilos.videoPlayer}>
-                                    <WebView
+                                    <WebView<{}>
+                                        ref={webViewRef}
                                         key={videoSelecionado.id}
-                                        source={{
-                                            uri: `https://www.youtube-nocookie.com/embed/${videoSelecionado.id}?playsinline=1&controls=1&autoplay=0&rel=0`,
-                                        }}
+                                        source={{ html: criarHtmlPlayer(videoSelecionado.id), baseUrl: 'https://www.youtube-nocookie.com' }}
                                         style={estilos.webView}
                                         containerStyle={estilos.webViewContainer}
+                                        javaScriptEnabled
+                                        domStorageEnabled
+                                        originWhitelist={['*']}
                                         allowsFullscreenVideo
                                         allowsInlineMediaPlayback
-                                        mediaPlaybackRequiresUserAction
+                                        mediaPlaybackRequiresUserAction={false}
+                                        onMessage={aoReceberMensagem}
                                         onLoadStart={() => {
                                             setCarregandoPlayer(true);
                                             setErroPlayer(null);
                                         }}
-                                        onLoadEnd={() => setCarregandoPlayer(false)}
                                         onError={() => {
                                             setCarregandoPlayer(false);
                                             setErroPlayer('Não foi possível carregar o player oficial do YouTube.');
@@ -160,9 +249,53 @@ export default function TelaYouTube() {
                                         </View>
                                     )}
                                 </View>
-                                {!!erroPlayer && <Text style={estilos.erro}>{erroPlayer}</Text>}
+                                <View style={estilos.seekContainer}>
+                                    <View
+                                        style={estilos.seekBar}
+                                        onLayout={event => setLarguraSeek(event.nativeEvent.layout.width)}
+                                        onStartShouldSetResponder={() => true}
+                                        onMoveShouldSetResponder={() => true}
+                                        onResponderRelease={event => {
+                                            if (!progresso.duracao || !larguraSeek) return;
+                                            const proporcao = Math.max(0, Math.min(1, event.nativeEvent.locationX / larguraSeek));
+                                            enviarComandoPlayer('seek', proporcao * progresso.duracao);
+                                        }}
+                                    >
+                                        <View style={[estilos.seekProgresso, { width: `${progresso.duracao ? Math.min(100, progresso.tempo / progresso.duracao * 100) : 0}%` }]} />
+                                    </View>
+                                    <View style={estilos.tempos}><Text style={estilos.tempo}>{formatarDuracao(progresso.tempo)}</Text><Text style={estilos.tempo}>{formatarDuracao(progresso.duracao)}</Text></View>
+                                </View>
+                                <View style={estilos.controlesPlayer}>
+                                    <TouchableOpacity accessibilityLabel="Vídeo anterior" onPress={() => avancarFila(-1)} disabled={indiceFila <= 0} style={estilos.controlePlayer}>
+                                        <Ionicons name="play-skip-back" size={21} color={indiceFila <= 0 ? Tema.textoSuave : Tema.texto} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity accessibilityLabel="Voltar 10 segundos" onPress={() => enviarComandoPlayer('back')} style={estilos.controlePlayer}>
+                                        <Ionicons name="play-back" size={23} color={Tema.texto} /><Text style={estilos.rotuloPulo}>10</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity accessibilityLabel={estadoPlayer === 1 ? 'Pausar' : 'Reproduzir'} onPress={() => enviarComandoPlayer('toggle')} style={estilos.controlePrincipal}>
+                                        <Ionicons name={estadoPlayer === 1 ? 'pause' : 'play'} size={24} color="#FFF" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity accessibilityLabel="Avançar 10 segundos" onPress={() => enviarComandoPlayer('forward')} style={estilos.controlePlayer}>
+                                        <Ionicons name="play-forward" size={23} color={Tema.texto} /><Text style={estilos.rotuloPulo}>10</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity accessibilityLabel="Próximo vídeo" onPress={() => avancarFila(1)} disabled={indiceFila < 0 || indiceFila >= resultados.length - 1} style={estilos.controlePlayer}>
+                                        <Ionicons name="play-skip-forward" size={21} color={indiceFila < 0 || indiceFila >= resultados.length - 1 ? Tema.textoSuave : Tema.texto} />
+                                    </TouchableOpacity>
+                                </View>
+                                {!!erroPlayer && (
+                                    <View style={estilos.fallbackYouTube}>
+                                        <Text style={estilos.erro}>{erroPlayer}</Text>
+                                        <TouchableOpacity
+                                            style={estilos.abrirYouTube}
+                                            onPress={() => void Linking.openURL(`https://www.youtube.com/watch?v=${videoSelecionado.id}`).catch(() => setErroPlayer('Não foi possível abrir o YouTube neste dispositivo.'))}
+                                        >
+                                            <Ionicons name="open-outline" size={17} color="#FFF" />
+                                            <Text style={estilos.textoAbrirYouTube}>Abrir no YouTube</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
                                 <Text style={estilos.textoDica}>
-                                    Use os controles do YouTube para iniciar a reprodução. O áudio em segundo plano depende das regras do YouTube.
+                                    Reprodução pelo player oficial do YouTube. O áudio em segundo plano depende das regras do YouTube e do dispositivo.
                                 </Text>
                             </View>
                         )}
@@ -205,7 +338,7 @@ export default function TelaYouTube() {
                         {!!erro && <Text style={estilos.erro}>{erro}</Text>}
                     </>
                 }
-                ListEmptyComponent={!carregando && termo && !erro ? <Text style={estilos.vazio}>Nenhum resultado encontrado.</Text> : null}
+                ListEmptyComponent={!carregando && Boolean(termo) && !erro ? <Text style={estilos.vazio}>Nenhum resultado encontrado.</Text> : undefined}
             />
         </SafeAreaView>
     );
@@ -235,10 +368,22 @@ const estilos = StyleSheet.create({
     atualTitulo: { color: Tema.texto, fontSize: 15, fontWeight: '800', marginTop: 5 },
     atualCanal: { color: Tema.textoSecundario, fontSize: 12, marginTop: 3 },
     fecharPlayer: { padding: 7 },
-    videoPlayer: { height: 210, position: 'relative', backgroundColor: '#000', borderRadius: 12, overflow: 'hidden' },
+    videoPlayer: { aspectRatio: 16 / 9, position: 'relative', backgroundColor: '#000', borderRadius: 12, overflow: 'hidden' },
     webView: { flex: 1, backgroundColor: '#000' },
     webViewContainer: { backgroundColor: '#000' },
-    carregandoPlayer: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
+    carregandoPlayer: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' },
+    seekContainer: { marginTop: 12, gap: 5 },
+    seekBar: { height: 5, width: '100%', backgroundColor: Tema.superficieClara, borderRadius: 4, overflow: 'hidden' },
+    seekProgresso: { height: '100%', backgroundColor: '#FF3333' },
+    tempos: { flexDirection: 'row', justifyContent: 'space-between' },
+    tempo: { color: Tema.textoSuave, fontSize: 10 },
+    controlesPlayer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around', marginTop: 10 },
+    controlePlayer: { minWidth: 40, height: 42, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+    rotuloPulo: { position: 'absolute', fontSize: 8, color: Tema.texto, fontWeight: '800', top: 15 },
+    controlePrincipal: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#E62117', alignItems: 'center', justifyContent: 'center' },
+    fallbackYouTube: { gap: 6 },
+    abrirYouTube: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: '#E62117', paddingHorizontal: 12, paddingVertical: 9, borderRadius: 10 },
+    textoAbrirYouTube: { color: '#FFF', fontSize: 12, fontWeight: '700' },
     miniaturaWrap: { position: 'relative' },
     miniatura: { width: 116, height: 70, borderRadius: 10, backgroundColor: Tema.superficieClara },
     semMiniatura: { alignItems: 'center', justifyContent: 'center' },

@@ -14,7 +14,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
-import { SeletorFonteAudio } from '../../../componentes/SeletorFonteAudio';
 import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import { baixarMusica } from '../../services/DownloadMusica';
@@ -24,6 +23,7 @@ import {
     artistaEstaSendoSeguido,
     buscarAlbunsMB,
     buscarMusicasMB,
+    buscarMusicasDoAlbum,
     deixarDeSeguirArtistaNaApi,
     formatarDuracao,
     Musica,
@@ -58,7 +58,6 @@ export default function TelaArtista() {
     const [musicas, setMusicas] = useState<Musica[]>([]);
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
-    const [musicaEscolhida, setMusicaEscolhida] = useState<Musica | null>(null);
     const [favoritas, setFavoritas] = useState<Set<string>>(new Set());
     const [carregandoFavoritos, setCarregandoFavoritos] = useState(false);
     const [seguindo, setSeguindo] = useState(false);
@@ -77,15 +76,31 @@ export default function TelaArtista() {
         setCarregando(true);
         setErro(null);
 
-        const carregar = usaMusicBrainz
-            ? Promise.all([buscarAlbunsMB(idOuNome, controlador.signal, nomeArtista), buscarMusicasMB(idOuNome, controlador.signal, nomeArtista)])
-            : Promise.all([pesquisarAlbums(nomeArtista, controlador.signal), pesquisarMusicasPorArtista(nomeArtista, controlador.signal)]);
+        const carregar = async () => {
+            const [lancamentosBrutos, faixasArtista] = usaMusicBrainz
+                ? await Promise.all([buscarAlbunsMB(idOuNome, controlador.signal, nomeArtista), buscarMusicasMB(idOuNome, controlador.signal, nomeArtista)])
+                : await Promise.all([pesquisarAlbums(nomeArtista, controlador.signal), pesquisarMusicasPorArtista(nomeArtista, controlador.signal)]);
 
-        carregar.then(([lancamentos, faixas]) => {
-            const nomeNormalizado = nomeArtista.trim().toLowerCase();
-            setAlbuns(usaMusicBrainz
-                ? lancamentos
-                : lancamentos.filter(album => album.artista?.toLowerCase() === nomeNormalizado));
+            const normalizar = (valor: string) => valor.trim().toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            const nomeNormalizado = normalizar(nomeArtista);
+            const lancamentos = lancamentosBrutos
+                .filter(album => usaMusicBrainz || normalizar(album.artista ?? '').includes(nomeNormalizado))
+                .filter((album, indice, todos) => todos.findIndex(outro => outro.source === album.source && outro.id === album.id) === indice);
+
+            // Para catálogos que não oferecem um endpoint de faixas por artista,
+            // carrega também as faixas de cada álbum para completar a discografia.
+            const faixasDosAlbuns = usaMusicBrainz ? [] : (await Promise.all(lancamentos.map(album =>
+                buscarMusicasDoAlbum(album.id, album.source, controlador.signal, nomeArtista, undefined, album.titulo)
+            ))).flat();
+            const todasAsFaixas = [...faixasArtista, ...faixasDosAlbuns]
+                .filter(faixa => !faixa.artista || normalizar(faixa.artista).includes(nomeNormalizado))
+                .filter((faixa, indice, todas) => todas.findIndex(outro => `${outro.source}:${outro.id}` === `${faixa.source}:${faixa.id}`) === indice);
+
+            return { lancamentos, faixas: todasAsFaixas };
+        };
+
+        carregar().then(({ lancamentos, faixas }) => {
+            setAlbuns(lancamentos);
             setMusicas(faixas);
         }).catch(e => {
             if (e instanceof Error && e.name !== 'AbortError') setErro(e.message || 'Falha ao carregar o artista.');
@@ -155,8 +170,8 @@ export default function TelaArtista() {
             else retomar();
             return;
         }
-        await tocar(musica, [musica]);
-    }, [estado, faixaAtual, pausar, retomar, tocar]);
+        await tocar(musica, musicas);
+    }, [estado, faixaAtual, musicas, pausar, retomar, tocar]);
 
     const baixarFaixa = useCallback(async (musica: Musica) => {
         try {
@@ -281,7 +296,7 @@ export default function TelaArtista() {
         const carregandoEsta = ativa && estado === 'carregando';
         return (
             <View style={[estilos.musica, ativa && estilos.musicaAtiva]}>
-                <TouchableOpacity style={estilos.musicaInfo} onPress={() => setMusicaEscolhida(item)}>
+                <TouchableOpacity style={estilos.musicaInfo} onPress={() => void tocarFonte(item)}>
                     <Text style={estilos.numero}>{index + 1}</Text>
                     <View style={{ flex: 1 }}>
                         <Text style={[estilos.tituloMusica, ativa && { color: Tema.destaqueAlt }]} numberOfLines={1}>{item.titulo}</Text>
@@ -308,7 +323,7 @@ export default function TelaArtista() {
                 </View>
             </View>
         );
-    }, [baixarFaixa, faixaAtual, estado, favoritas, alternarCurtida]);
+    }, [baixarFaixa, faixaAtual, estado, favoritas, alternarCurtida, tocarFonte]);
 
     const cabecalho = useMemo(() => (
         <>
@@ -361,7 +376,6 @@ export default function TelaArtista() {
                         ListEmptyComponent={<Text style={estilos.vazio}>Nenhum álbum, single ou música encontrado para este artista.</Text>}
                         contentContainerStyle={estilos.rolagem}
                     />}
-            <SeletorFonteAudio musica={musicaEscolhida} visivel={!!musicaEscolhida} onFechar={() => setMusicaEscolhida(null)} onSelecionar={tocarFonte} />
         </SafeAreaView>
     );
 }

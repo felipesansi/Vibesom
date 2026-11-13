@@ -4,7 +4,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, Image, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
-import { SeletorFonteAudio } from '../../../componentes/SeletorFonteAudio';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import { baixarMusica } from '../../services/DownloadMusica';
 import { buscarMusicasDoAlbum, formatarDuracao, Musica, urlStreamCompleta } from '../../../lib/apiMusica';
@@ -15,7 +14,6 @@ export default function TelaAlbum() {
     const [musicas, setMusicas] = useState<Musica[]>([]);
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
-    const [musicaEscolhida, setMusicaEscolhida] = useState<Musica | null>(null);
     const { faixaAtual, estado, tocar, pausar, retomar } = usePlayer();
 
     useEffect(() => {
@@ -50,8 +48,8 @@ export default function TelaAlbum() {
             if (estado === 'tocando') pausar(); else retomar();
             return;
         }
-        await tocar(musica, [musica]);
-    }, [estado, faixaAtual, pausar, retomar, tocar]);
+        await tocar(musica, musicas);
+    }, [estado, faixaAtual, musicas, pausar, retomar, tocar]);
 
     const baixarFaixa = useCallback(async (musica: Musica) => {
         try {
@@ -70,7 +68,7 @@ export default function TelaAlbum() {
     const renderMusica = useCallback(({ item, index }: { item: Musica; index: number }) => {
         const ativa = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         const carregandoEsta = ativa && estado === 'carregando';
-        return <TouchableOpacity style={[estilos.faixa, ativa && estilos.faixaAtiva]} onPress={() => setMusicaEscolhida(item)}>
+        return <TouchableOpacity style={[estilos.faixa, ativa && estilos.faixaAtiva]} onPress={() => void tocarFonte(item)}>
             <Text style={estilos.numero}>{index + 1}</Text>
             <View style={{ flex: 1 }}>
                 <Text style={[estilos.tituloFaixa, ativa && { color: Tema.destaqueAlt }]} numberOfLines={1}>{item.titulo}</Text>
@@ -83,7 +81,7 @@ export default function TelaAlbum() {
             {carregandoEsta && <ActivityIndicator size="small" color={Tema.destaqueAlt} style={{ marginLeft: 4 }} />}
             <Ionicons name="play-circle-outline" size={25} color={Tema.textoSecundario} />
         </TouchableOpacity>;
-    }, [baixarFaixa, faixaAtual, estado]);
+    }, [baixarFaixa, faixaAtual, estado, tocarFonte]);
 
     const titulo = params.titulo ? decodeURIComponent(params.titulo) : 'Álbum';
     const artista = params.artista ? decodeURIComponent(params.artista) : '';
@@ -105,7 +103,6 @@ export default function TelaAlbum() {
         {carregando ? <View style={estilos.centro}><ActivityIndicator size="large" color={Tema.destaqueAlt} /></View>
             : erro ? <View style={estilos.centro}><Text style={estilos.erro}>{erro}</Text></View>
                 : <FlatList data={musicas} keyExtractor={item => `${item.source}-${item.id}`} renderItem={renderMusica} ListHeaderComponent={cabecalho} contentContainerStyle={estilos.rolagem} ListEmptyComponent={<Text style={estilos.vazio}>Não há músicas disponíveis neste lançamento.</Text>} />}
-        <SeletorFonteAudio musica={musicaEscolhida} visivel={!!musicaEscolhida} onFechar={() => setMusicaEscolhida(null)} onSelecionar={tocarFonte} />
     </SafeAreaView>;
 }
 

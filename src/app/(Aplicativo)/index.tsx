@@ -152,7 +152,7 @@ export default function TelaConfiguracoes() {
                 </View>
 
                 {/* Versão */}
-                <Text style={estilos.versao}>Vibesom • v1.0.0</Text>
+                <Text style={estilos.versao}>Vibesom • v1.0.2</Text>
             </ScrollView>
 
             {/* Modal de confirmação de logout */}
@@ -160,7 +160,9 @@ export default function TelaConfiguracoes() {
                 visible={modalSair}
                 transparent
                 animationType="fade"
-                onRequestClose={() => !saindo && setModalSair(false)}
+                onRequestClose={() => {
+                    if (!saindo) setModalSair(false);
+                }}
             >
                 <TouchableOpacity
                     style={estilos.overlay}

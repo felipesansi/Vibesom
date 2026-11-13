@@ -177,7 +177,7 @@ export default function TelaSelecionarArtistas() {
                             <Ionicons name="musical-notes-outline" size={42} color={Tema.textoSuave} />
                             <Text style={estilos.textoVazio}>Pesquise seus artistas favoritos para começar.</Text>
                         </View>
-                    ) : null}
+                    ) : undefined}
                 />
 
                 <View style={estilos.rodape}>

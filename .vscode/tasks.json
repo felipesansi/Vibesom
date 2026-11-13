@@ -1,0 +1,50 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Android APK (EAS preview)",
+			"type": "shell",
+			"command": "npx eas-cli",
+			"args": [
+				"build",
+				"--platform",
+				"android",
+				"--profile",
+				"preview"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Run EAS Android preview build",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"eas-cli",
+				"build",
+				"--platform",
+				"android",
+				"--profile",
+				"preview"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Build APK via EAS preview",
+			"type": "shell",
+			"command": "npx",
+			"args": [
+				"--yes",
+				"eas-cli",
+				"build",
+				"--platform",
+				"android",
+				"--profile",
+				"preview"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

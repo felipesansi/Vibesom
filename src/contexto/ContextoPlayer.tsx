@@ -14,6 +14,7 @@ import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
+type ModoRepeticao = 'desligado' | 'fila' | 'faixa';
 
 type ContextoPlayerValor = {
     faixaAtual: Musica | null;
@@ -22,7 +23,8 @@ type ContextoPlayerValor = {
     erro: string | null;
     posicao: number;   // segundos
     duracao: number;   // segundos
-    repetir: boolean;
+    buscarPara: (segundos: number) => void;
+    repetir: ModoRepeticao;
     aleatorio: boolean;
     tocar: (musica: Musica, novaLista?: Musica[]) => Promise<void>;
     pausar: () => void;
@@ -44,7 +46,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const [indiceAtual, setIndiceAtual] = useState<number>(-1);
     const [estado, setEstado] = useState<EstadoPlayer>('parado');
     const [erroMsg, setErroMsg] = useState<string | null>(null);
-    const [repetir, setRepetir] = useState(false);
+    const [repetir, setRepetir] = useState<ModoRepeticao>('desligado');
     const [aleatorio, setAleatorio] = useState(false);
     const requisicaoAtual = useRef(0);
     const iniciarAoCarregar = useRef(false);
@@ -161,10 +163,27 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         return () => clearTimeout(limite);
     }, [faixaAtual?.id, faixaAtual?.source, estado, player]);
 
+    const parar = useCallback(() => {
+        requisicaoAtual.current += 1;
+        iniciarAoCarregar.current = false;
+        player.pause();
+        try {
+            player.setActiveForLockScreen(false);
+        } catch (erro) {
+            console.warn('[Player] Não foi possível remover os controles do sistema:', erro);
+            try {
+                player.clearLockScreenControls();
+            } catch (erroControles) {
+                console.warn('[Player] Não foi possível limpar os controles do sistema:', erroControles);
+            }
+        }
+        setFaixaAtual(null);
+    }, [player]);
+
     const tocar: ContextoPlayerValor['tocar'] = useCallback(async (musica, novaLista) => {
         if (musica.source.toLowerCase() === 'youtube') {
-            player.pause();
-            router.push({ pathname: '/youtube/index', params: { videoId: musica.id } });
+            parar();
+            router.push({ pathname: '/youtube', params: { videoId: musica.id } });
             return;
         }
 
@@ -245,20 +264,25 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             setEstado('erro');
             Alert.alert('Erro ao carregar áudio', mensagem);
         }
-    }, [player, lista, setEstado, setErroMsg, setLista, setIndiceAtual, setFaixaAtual]);
+    }, [player, lista, parar]);
 
     const proxima = useCallback(() => {
         if (lista.length === 0) return;
 
         let proximoIndice: number;
         if (aleatorio) {
-            proximoIndice = Math.floor(Math.random() * lista.length);
+            proximoIndice = lista.length > 1
+                ? (indiceAtual + 1 + Math.floor(Math.random() * (lista.length - 1))) % lista.length
+                : indiceAtual;
         } else {
-            proximoIndice = (indiceAtual + 1) % lista.length;
+            if (indiceAtual < 0) proximoIndice = 0;
+            else if (indiceAtual + 1 < lista.length) proximoIndice = indiceAtual + 1;
+            else if (repetir === 'fila') proximoIndice = 0;
+            else return;
         }
 
         tocar(lista[proximoIndice]);
-    }, [lista, indiceAtual, aleatorio, tocar]);
+    }, [lista, indiceAtual, aleatorio, repetir, tocar]);
 
     const anterior = useCallback(() => {
         if (lista.length === 0) return;
@@ -269,11 +293,13 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             return;
         }
 
-        const indiceAnterior = (indiceAtual - 1 + lista.length) % lista.length;
-        tocar(lista[indiceAnterior]);
-    }, [lista, indiceAtual, status.currentTime, player, tocar]);
+        const indiceAnterior = indiceAtual > 0
+            ? indiceAtual - 1
+            : repetir === 'fila' ? lista.length - 1 : -1;
+        if (indiceAnterior >= 0) tocar(lista[indiceAnterior]);
+    }, [lista, indiceAtual, status.currentTime, repetir, player, tocar]);
 
-    const alternarRepeticao = () => setRepetir(!repetir);
+    const alternarRepeticao = () => setRepetir(modo => modo === 'desligado' ? 'fila' : modo === 'fila' ? 'faixa' : 'desligado');
     const alternarAleatorio = () => setAleatorio(!aleatorio);
 
     const adicionarAFila = useCallback((musica: Musica) => {
@@ -291,14 +317,14 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
     // Sincroniza a propriedade loop nativa do player com o estado do contexto
     React.useEffect(() => {
-        player.loop = repetir;
+        player.loop = repetir === 'faixa';
     }, [player, repetir]);
 
     React.useEffect(() => {
-        if (status.isLoaded && status.didJustFinish && !player.loop) {
+        if (status.isLoaded && status.didJustFinish && repetir !== 'faixa') {
             proxima();
         }
-    }, [status.isLoaded, status.didJustFinish, player.loop, proxima]);
+    }, [status.isLoaded, status.didJustFinish, repetir, proxima]);
 
     // Mantém título, artista e capa atualizados no controle de mídia quando
     // a faixa muda enquanto o app está em segundo plano.
@@ -354,17 +380,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         player.play();
     }, [player, faixaAtual]);
 
-    const parar = useCallback(() => {
-        requisicaoAtual.current += 1;
-        iniciarAoCarregar.current = false;
-        player.pause();
-        try {
-            player.setActiveForLockScreen(false);
-        } catch (_) {
-            try { player.clearLockScreenControls(); } catch (_) { }
-        }
-        setFaixaAtual(null);
-    }, [player]);
+    const buscarPara = useCallback((segundos: number) => {
+        if (!status.isLoaded || !Number.isFinite(segundos)) return;
+        player.seekTo(Math.max(0, Math.min(segundos, status.duration || segundos)));
+    }, [player, status.isLoaded, status.duration]);
 
     const posicao = status.isLoaded ? (status.currentTime ?? 0) : 0;
     const duracao = status.isLoaded ? (status.duration ?? 0) : 0;
@@ -378,6 +397,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
                 erro: erroMsg,
                 posicao,
                 duracao,
+                buscarPara,
                 repetir,
                 aleatorio,
                 tocar,

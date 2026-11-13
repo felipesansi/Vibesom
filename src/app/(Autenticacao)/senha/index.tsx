@@ -186,7 +186,7 @@ const estilos = StyleSheet.create({
         resizeMode: 'cover',
     },
     sobreposicaoCabecalho: {
-        ...StyleSheet.absoluteFillObject,
+        ...StyleSheet.absoluteFill,
         backgroundColor: 'rgba(10, 10, 18, 0.55)',
     },
     botaoVoltar: {
