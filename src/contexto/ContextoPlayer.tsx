@@ -53,6 +53,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const alternativasRef = useRef<Musica[]>([]);
     const indiceAlternativaRef = useRef(0);
     const persistenciaCarregada = useRef(false);
+    const faixaRestauradaSemAudio = useRef(false);
 
     const player = useAudioPlayer(null);
     const status = useAudioPlayerStatus(player);
@@ -74,6 +75,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             if (estadoSalvo) {
                 setLista(estadoSalvo.lista);
                 setIndiceAtual(estadoSalvo.indiceAtual);
+                if (estadoSalvo.indiceAtual >= 0) {
+                    setFaixaAtual(estadoSalvo.lista[estadoSalvo.indiceAtual] ?? null);
+                    faixaRestauradaSemAudio.current = true;
+                }
                 setRepetir(estadoSalvo.repetir);
                 setAleatorio(estadoSalvo.aleatorio);
             }
@@ -106,6 +111,8 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
         if (status.playing) {
             setEstado('tocando');
+        } else if (faixaRestauradaSemAudio.current) {
+            setEstado('pausado');
         } else if (!status.isLoaded || status.isBuffering || estado === 'carregando') {
             setEstado('carregando');
         } else {
@@ -196,6 +203,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         }
 
         const requisicao = ++requisicaoAtual.current;
+        faixaRestauradaSemAudio.current = false;
         tentouFallbackRef.current = false;
         alternativasRef.current = [];
         indiceAlternativaRef.current = 0;
@@ -368,6 +376,10 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     }, [player]);
 
     const retomar = useCallback(() => {
+        if (faixaAtual && faixaRestauradaSemAudio.current) {
+            void tocar(faixaAtual);
+            return;
+        }
         setErroMsg(null);
         setEstado('carregando');
         if (faixaAtual) {
@@ -387,7 +399,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
         }
 
         player.play();
-    }, [player, faixaAtual]);
+    }, [player, faixaAtual, tocar]);
 
     const parar = useCallback(() => {
         requisicaoAtual.current += 1;
