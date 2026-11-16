@@ -1,0 +1,30 @@
+name: Validate VibeSom player branch
+
+on:
+  push:
+    branches:
+      - feat/player-hibrido-offline
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Expo Doctor
+        run: npx expo-doctor
+      - name: TypeScript
+        run: npx tsc --noEmit
