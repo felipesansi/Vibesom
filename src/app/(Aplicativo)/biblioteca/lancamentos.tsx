@@ -16,10 +16,14 @@ import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { usePlayer } from '../../../contexto/ContextoPlayer';
 import {
     buscarNovosLancamentos,
+    buscarNovosLancamentosDeArtistas,
     formatarDataLancamento,
     Lancamento,
     Musica,
+    resolverAudio,
+    urlStreamCompleta,
 } from '../../../lib/apiMusica';
+import { buscarArtistasSeguidosDoUsuario } from '../../../lib/supabase';
 
 export default function TelaLancamentos() {
     const router = useRouter();
@@ -28,6 +32,7 @@ export default function TelaLancamentos() {
     const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
     const [carregando, setCarregando] = useState(true);
     const [erro, setErro] = useState<string | null>(null);
+    const [tocandoId, setTocandoId] = useState<string | null>(null);
 
     useFocusEffect(
         useCallback(() => {
@@ -44,8 +49,26 @@ export default function TelaLancamentos() {
 
             (async () => {
                 try {
-                    const pagina = await buscarNovosLancamentos(sessao.access_token, 1, 20, controlador.signal);
-                    if (ativo) setLancamentos(pagina.lancamentos);
+                    // 1. Tenta buscar novos lançamentos via API (que sabe quem o usuário segue)
+                    const pagina = await buscarNovosLancamentos(sessao.access_token, 1, 30, controlador.signal);
+
+                    if (ativo && pagina.lancamentos.length > 0) {
+                        setLancamentos(pagina.lancamentos);
+                        return;
+                    }
+
+                    // 2. Fallback: a API pode ter perdido os dados (banco em memória).
+                    //    Usa os artistas seguidos do Supabase local para buscar lançamentos.
+                    const artistasLocais = await buscarArtistasSeguidosDoUsuario(usuario.id);
+                    if (!ativo) return;
+
+                    if (artistasLocais.length === 0) {
+                        if (ativo) setLancamentos([]);
+                        return;
+                    }
+
+                    const lancamentosLocais = await buscarNovosLancamentosDeArtistas(artistasLocais, controlador.signal);
+                    if (ativo) setLancamentos(lancamentosLocais);
                 } catch (e: any) {
                     if (ativo && e?.name !== 'AbortError') {
                         setErro(e?.message || 'Falha ao carregar lançamentos.');
@@ -63,25 +86,66 @@ export default function TelaLancamentos() {
     );
 
     const tocarLancamento = useCallback(async (lancamento: Lancamento) => {
-        const musica: Musica = {
-            id: lancamento.id,
-            titulo: lancamento.titulo,
-            artista: lancamento.artista,
-            album: lancamento.album,
-            capa: lancamento.capa ?? null,
-            duracao: lancamento.duracao ?? 0,
-            streamUrl: lancamento.streamUrl ?? '',
-            source: lancamento.source,
-        };
+        const ehAtualId = `${lancamento.source}-${lancamento.id}`;
+        const ehAtualFaixa = faixaAtual && `${faixaAtual.source}-${faixaAtual.id}` === ehAtualId;
 
-        const ehAtual = faixaAtual?.id === musica.id && faixaAtual?.source === musica.source;
-        if (ehAtual) {
+        if (ehAtualFaixa) {
             if (estado === 'tocando') pausar();
             else retomar();
             return;
         }
 
-        await tocar(musica, [musica]);
+        setTocandoId(ehAtualId);
+        try {
+            let streamUrlFinal = lancamento.streamUrl ?? '';
+
+            // Se o streamUrl é uma rota de /resolver, usa resolverAudio para obter a URL real
+            if (
+                !streamUrlFinal ||
+                streamUrlFinal.startsWith('/resolver') ||
+                streamUrlFinal.includes('resolver?')
+            ) {
+                try {
+                    const resolvido = await resolverAudio(lancamento.artista, lancamento.titulo);
+                    streamUrlFinal = resolvido.streamUrl || resolvido.url || '';
+                } catch {
+                    streamUrlFinal = '';
+                }
+            } else {
+                // Resolve URLs relativas (ex: /soundcloud/stream/123)
+                streamUrlFinal = urlStreamCompleta(streamUrlFinal);
+            }
+
+            // Fallback para previewUrl se streamUrl ainda estiver vazia
+            if (!streamUrlFinal && (lancamento as any).previewUrl) {
+                streamUrlFinal = (lancamento as any).previewUrl;
+            }
+
+            if (!streamUrlFinal) {
+                // Última tentativa via resolver
+                try {
+                    const resolvido = await resolverAudio(lancamento.artista, lancamento.titulo);
+                    streamUrlFinal = resolvido.streamUrl || resolvido.url || '';
+                } catch {
+                    throw new Error('Não foi possível encontrar o áudio desta música.');
+                }
+            }
+
+            const musica: Musica = {
+                id: lancamento.id,
+                titulo: lancamento.titulo,
+                artista: lancamento.artista,
+                album: lancamento.album,
+                capa: lancamento.capa ?? null,
+                duracao: lancamento.duracao ?? 0,
+                streamUrl: streamUrlFinal,
+                source: lancamento.source,
+            };
+
+            await tocar(musica, [musica]);
+        } finally {
+            setTocandoId(null);
+        }
     }, [faixaAtual, estado, tocar, pausar, retomar]);
 
     const abrirArtista = useCallback((lancamento: Lancamento) => {
@@ -96,8 +160,10 @@ export default function TelaLancamentos() {
     }, [router]);
 
     const renderLancamento = useCallback(({ item }: { item: Lancamento }) => {
-        const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
+        const ehAtualId = `${item.source}-${item.id}`;
+        const ehAtual = faixaAtual && `${faixaAtual.source}-${faixaAtual.id}` === ehAtualId;
         const tocando = ehAtual && estado === 'tocando';
+        const carregandoEste = tocandoId === ehAtualId;
 
         return (
             <TouchableOpacity
@@ -124,15 +190,18 @@ export default function TelaLancamentos() {
                     )}
                 </View>
                 <TouchableOpacity style={estilos.botaoPlay} onPress={() => tocarLancamento(item)}>
-                    <Ionicons
-                        name={tocando ? 'pause' : 'play'}
-                        size={20}
-                        color={ehAtual ? Tema.destaqueAlt : Tema.textoSuave}
-                    />
+                    {carregandoEste
+                        ? <ActivityIndicator size="small" color={Tema.destaqueAlt} />
+                        : <Ionicons
+                            name={tocando ? 'pause' : 'play'}
+                            size={20}
+                            color={ehAtual ? Tema.destaqueAlt : Tema.textoSuave}
+                        />
+                    }
                 </TouchableOpacity>
             </TouchableOpacity>
         );
-    }, [faixaAtual, estado, tocarLancamento, abrirArtista]);
+    }, [faixaAtual, estado, tocandoId, tocarLancamento, abrirArtista]);
 
     const renderVazio = () => {
         if (carregando) return null;

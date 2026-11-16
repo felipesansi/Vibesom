@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import Tema from '../../../../constantes/Cores';
 import { useAutenticacao } from '../../../contexto/ContextoAutenticacao';
 import { Artista, listarArtistasSeguidos } from '../../../lib/apiMusica';
+import { buscarArtistasSeguidosDoUsuario } from '../../../lib/supabase';
 
 export default function TelaArtistasSeguidos() {
     const router = useRouter();
@@ -24,7 +25,7 @@ export default function TelaArtistasSeguidos() {
 
     useFocusEffect(
         useCallback(() => {
-            if (!usuario?.id || !sessao?.access_token) {
+            if (!usuario?.id) {
                 setArtistas([]);
                 setCarregando(false);
                 return;
@@ -34,10 +35,32 @@ export default function TelaArtistasSeguidos() {
             setCarregando(true);
             setErro(null);
 
-            listarArtistasSeguidos(sessao.access_token)
-                .then(lista => { if (ativo) setArtistas(lista); })
-                .catch(e => { if (ativo) setErro(e?.message || 'Falha ao carregar artistas seguidos.'); })
-                .finally(() => { if (ativo) setCarregando(false); });
+            (async () => {
+                try {
+                    let lista: Artista[] = [];
+
+                    // 1. Tenta buscar da API (autenticada) se tiver token
+                    if (sessao?.access_token) {
+                        try {
+                            lista = await listarArtistasSeguidos(sessao.access_token);
+                        } catch {
+                            lista = [];
+                        }
+                    }
+
+                    // 2. Fallback: se a API retornou vazio (banco em memória pode ter resetado),
+                    //    usa os artistas salvos no Supabase/cache local
+                    if (lista.length === 0) {
+                        lista = await buscarArtistasSeguidosDoUsuario(usuario.id);
+                    }
+
+                    if (ativo) setArtistas(lista);
+                } catch (e: any) {
+                    if (ativo) setErro(e?.message || 'Falha ao carregar artistas seguidos.');
+                } finally {
+                    if (ativo) setCarregando(false);
+                }
+            })();
 
             return () => { ativo = false; };
         }, [usuario?.id, sessao?.access_token])
@@ -73,6 +96,10 @@ export default function TelaArtistasSeguidos() {
                         ].filter(Boolean).join(' · ')}
                     </Text>
                 )}
+                <View style={estilos.badgeSeguindo}>
+                    <Ionicons name="checkmark-circle" size={12} color={Tema.destaqueAlt} />
+                    <Text style={estilos.badgeTexto}>Seguindo</Text>
+                </View>
             </View>
             <Ionicons name="chevron-forward" size={20} color={Tema.textoSuave} />
         </TouchableOpacity>
@@ -110,7 +137,7 @@ export default function TelaArtistasSeguidos() {
                     : <FlatList
                         data={artistas}
                         renderItem={renderArtista}
-                        keyExtractor={item => `${item.source ?? 'mb'}-${item.id}`}
+                        keyExtractor={item => `${item.source}-${item.id}`}
                         ListEmptyComponent={renderVazio}
                         contentContainerStyle={artistas.length === 0 ? estilos.listaVazia : estilos.lista}
                     />
@@ -142,11 +169,12 @@ const estilos = StyleSheet.create({
         color: Tema.texto,
         fontSize: 22,
         fontWeight: '800',
+        flex: 1,
     },
     lista: {
         paddingHorizontal: 16,
         paddingBottom: 32,
-        gap: 12,
+        gap: 10,
     },
     listaVazia: {
         flex: 1,
@@ -157,14 +185,14 @@ const estilos = StyleSheet.create({
         backgroundColor: Tema.superficie,
         borderRadius: 16,
         padding: 12,
-        gap: 14,
+        gap: 12,
         borderWidth: 1,
         borderColor: Tema.borda,
     },
     avatar: {
-        width: 58,
-        height: 58,
-        borderRadius: 29,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         backgroundColor: Tema.superficieClara,
     },
     avatarVazio: {
@@ -173,6 +201,7 @@ const estilos = StyleSheet.create({
     },
     info: {
         flex: 1,
+        gap: 3,
     },
     nome: {
         color: Tema.texto,
@@ -181,8 +210,18 @@ const estilos = StyleSheet.create({
     },
     meta: {
         color: Tema.textoSuave,
-        fontSize: 13,
-        marginTop: 4,
+        fontSize: 12,
+    },
+    badgeSeguindo: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        marginTop: 2,
+    },
+    badgeTexto: {
+        color: Tema.destaqueAlt,
+        fontSize: 11,
+        fontWeight: '600',
     },
     centro: {
         flex: 1,

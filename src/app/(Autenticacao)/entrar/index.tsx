@@ -259,7 +259,7 @@ const estilos = StyleSheet.create({
         resizeMode: 'cover',
     },
     sobreposicaoCabecalho: {
-        ...StyleSheet.absoluteFill,
+        ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(10, 10, 18, 0.5)',
     },
     conteudoCabecalho: {

@@ -10,6 +10,8 @@ export default function LayoutRaiz() {
         if (Platform.OS === 'android') {
             // Esconde os botões virtuais (Voltar, Home, Recentes) do Android
             NavigationBar.setVisibilityAsync("hidden");
+            // Define comportamento imersivo: ao deslizar, aparece temporariamente e some
+            NavigationBar.setBehaviorAsync("overlay-swipe");
         }
     }, []);
     return (

@@ -4,14 +4,11 @@ import { Platform, StyleSheet, View } from 'react-native';
 import Tema from '../../../constantes/Cores';
 import { MiniPlayer } from '../../componentes/MiniPlayer';
 
-export const unstable_settings = {
-    anchor: 'inicio/index',
-};
-
 export default function LayoutAplicativo() {
     return (
         <View style={{ flex: 1, backgroundColor: Tema.fundo }}>
             <Tabs
+            initialRouteName="inicio/index"
             screenOptions={{
                 headerShown: false,
                 tabBarStyle: {
@@ -39,7 +36,7 @@ export default function LayoutAplicativo() {
                     title: 'Início',
                     tabBarIcon: ({ color, focused }) => (
                         <View style={[estilos.iconeContainer, focused && estilos.iconeAtivo]}>
-                            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={typeof color === 'string' ? color : Tema.textoSuave} />
+                            <Ionicons name={focused ? "home" : "home-outline"} size={24} color={color} />
                         </View>
                     ),
                 }}
@@ -50,7 +47,7 @@ export default function LayoutAplicativo() {
                     title: 'Buscar',
                     tabBarIcon: ({ color, focused }) => (
                         <View style={[estilos.iconeContainer, focused && estilos.iconeAtivo]}>
-                            <Ionicons name={focused ? "search" : "search-outline"} size={24} color={typeof color === 'string' ? color : Tema.textoSuave} />
+                            <Ionicons name={focused ? "search" : "search-outline"} size={24} color={color} />
                         </View>
                     ),
                 }}
@@ -61,18 +58,19 @@ export default function LayoutAplicativo() {
                     title: 'YouTube',
                     tabBarIcon: ({ color, focused }) => (
                         <View style={[estilos.iconeContainer, focused && estilos.iconeAtivo]}>
-                            <Ionicons name="logo-youtube" size={24} color={focused ? '#FF3333' : typeof color === 'string' ? color : Tema.textoSuave} />
+                            <Ionicons name="logo-youtube" size={24} color={focused ? '#FF3333' : color} />
                         </View>
                     ),
                 }}
             />
+
             <Tabs.Screen
                 name="index"
                 options={{
                     title: 'Configurações',
                     tabBarIcon: ({ color, focused }) => (
                         <View style={[estilos.iconeContainer, focused && estilos.iconeAtivo]}>
-                            <Ionicons name={focused ? "settings" : "settings-outline"} size={24} color={typeof color === 'string' ? color : Tema.textoSuave} />
+                            <Ionicons name={focused ? "settings" : "settings-outline"} size={24} color={color} />
                         </View>
                     ),
                 }}

@@ -32,8 +32,10 @@ Vibesom é um aplicativo de streaming de música para dispositivos móveis, cons
 ## ⚙️ Configuração e Execução Local
 
 ### Pré-requisitos
-*   Node.js 24.3 ou superior (inclui npm)
-*   Um arquivo `.env` na raiz do projeto com as variáveis de ambiente necessárias (ex: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`).
+*   Node.js (versão LTS recomendada)
+*   Yarn ou npm
+*   Expo CLI: `npm install -g expo-cli`
+*   Um arquivo `.env` na raiz do projeto com as variáveis de ambiente necessárias (ex: `EXPO_PUBLIC_API_URL`, `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`). Por padrão, o app usa `https://vibesom-api.felipesansi2012.workers.dev`; defina `EXPO_PUBLIC_API_URL` apenas para apontar a outra implantação da API.
 
 ### Instalação
 
@@ -42,7 +44,9 @@ Clone o repositório e instale as dependências:
 ```bash
 git clone <URL_DO_REPOSITORIO>
 cd vibesom
-npm ci
+npm install
+# ou
+yarn install
 ```
 
 ### Executando o App

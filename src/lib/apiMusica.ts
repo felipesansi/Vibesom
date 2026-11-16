@@ -1,6 +1,6 @@
 
 const URL_BASE = (
-    process.env.EXPO_PUBLIC_API_URL ?? 'https://vibesom-api.vercel.app'
+    process.env.EXPO_PUBLIC_API_URL ?? 'https://vibesom-api.felipesansi2012.workers.dev'
 ).replace(/\/$/, '');
 
 
@@ -49,6 +49,8 @@ export type Lancamento = {
     dataLancamento?: string;
     duracao?: number;
     streamUrl?: string;
+    /** URL de preview (Deezer 30s). Usada como fallback quando streamUrl não resolve. */
+    previewUrl?: string;
     source: string;
 };
 
@@ -202,7 +204,10 @@ async function requisicaoApi<T>(
     }
 }
 
-function normalizarLancamento(item: Partial<Lancamento>): Lancamento {
+function normalizarLancamento(item: Partial<Lancamento> & { previewUrl?: string }): Lancamento {
+    // streamUrl: se for caminho relativo da API (ex: /resolver?...), mantém para ser resolvido pelo player
+    // Se for URL absoluta, mantém diretamente
+    const streamUrlRaw = item.streamUrl ?? item.previewUrl ?? undefined;
     return {
         id: String(item.id ?? ''),
         titulo: item.titulo ?? 'Sem título',
@@ -213,7 +218,8 @@ function normalizarLancamento(item: Partial<Lancamento>): Lancamento {
         tipo: item.tipo,
         dataLancamento: item.dataLancamento,
         duracao: item.duracao,
-        streamUrl: item.streamUrl,
+        streamUrl: streamUrlRaw,
+        previewUrl: item.previewUrl,
         source: item.source ?? 'Desconhecida',
     };
 }
@@ -406,25 +412,10 @@ export async function pesquisar(
 
 /** Busca exclusivamente vídeos no endpoint YouTube da VibeSom API. */
 export async function buscarMusicasYoutube(termo: string, signal?: AbortSignal): Promise<Musica[]> {
-    const termoLimpo = termo.trim();
-    if (!termoLimpo) return [];
-    const params = new URLSearchParams({ termo: termoLimpo, limite: '30' });
-    const resposta = await fetch(`${URL_BASE}/youtube/busca?${params.toString()}`, { signal });
-    if (!resposta.ok) {
-        if (resposta.status === 404) return [];
-        throw new Error(`Busca no YouTube indisponível (${resposta.status}).`);
-    }
-    const dados: unknown = await resposta.json();
-    if (!dados || typeof dados !== 'object' || !('musicas' in dados) || !Array.isArray((dados as { musicas: unknown }).musicas)) return [];
-    return (dados as { musicas: Partial<Musica>[] }).musicas.map(item => ({
-        source: 'YouTube',
-        id: String(item.id ?? ''),
-        titulo: item.titulo ?? 'Sem título',
-        artista: item.artista ?? 'Artista desconhecido',
-        capa: item.capa ?? null,
-        duracao: Number(item.duracao ?? 0),
-        streamUrl: '',
-    })).filter(item => /^[A-Za-z0-9_-]{11}$/.test(item.id));
+    const { musicas } = await pesquisar(termo, signal);
+    return musicas.filter(
+        musica => musica.source.toLowerCase() === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(musica.id)
+    );
 }
 
 //  todas as musicas por artista

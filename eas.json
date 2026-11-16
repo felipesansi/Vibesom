@@ -3,19 +3,16 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "channel": "development",
-      "node": "24.19.0"
+      "channel": "development"
     },
     "preview": {
       "android": {
         "buildType": "apk"
       },
-      "channel": "preview",
-      "node": "24.19.0"
+      "channel": "preview"
     },
     "production": {
-      "channel": "production",
-      "node": "24.19.0"
+      "channel": "production"
     }
   }
 }

@@ -79,7 +79,7 @@ export default function TelaBuscar() {
     const { width } = useWindowDimensions();
     const isTablet = width > 768;
 
-    const inputRef = useRef<React.ComponentRef<typeof TextInput>>(null);
+    const inputRef = useRef<TextInput>(null);
     const flatListRef = useRef<FlatList>(null);
 
     const { faixaAtual, estado, erro: erroPlayer, tocar, pausar, retomar, adicionarAFila } = usePlayer();
@@ -226,6 +226,11 @@ export default function TelaBuscar() {
     }, []);
 
     const aoTocar = useCallback(async (item: Musica) => {
+        if (item.source.toLowerCase() === 'youtube') {
+            router.push({ pathname: '/youtube', params: { videoId: item.id } });
+            return;
+        }
+
         const ehAtual = faixaAtual?.id === item.id && faixaAtual?.source === item.source;
         if (ehAtual) {
             if (estado === 'tocando') pausar();
@@ -579,7 +584,7 @@ export default function TelaBuscar() {
                         filtroAtivo === 'youtube'
                             ? !resultados.musicas.some(item => item.source.toLowerCase() === 'youtube')
                             : resultados.musicas.length === 0 && resultados.playlists.length === 0
-                    ) ? <Text style={estilos.vazio}>Nenhum resultado encontrado para "{termoBusca}".</Text> : undefined
+                    ) ? <Text style={estilos.vazio}>Nenhum resultado encontrado para "{termoBusca}".</Text> : null
                 }
             />
 
