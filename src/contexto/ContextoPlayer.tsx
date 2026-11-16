@@ -186,7 +186,15 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
 
             let url = obterArquivoMusicaBaixada(musica) ?? '';
             if (!url && musica.streamUrl) {
-                url = urlStreamCompleta(musica.streamUrl);
+                const rawStream = musica.streamUrl;
+                // Se a streamUrl aponta para o endpoint /resolver (retorna JSON, não áudio),
+                // precisa chamar resolverAudio para obter a URL real de streaming.
+                const ehRotaResolver = rawStream.includes('/resolver?') || rawStream.startsWith('/resolver');
+                if (ehRotaResolver) {
+                    // Não usamos a URL diretamente — será resolvida abaixo
+                } else {
+                    url = urlStreamCompleta(rawStream);
+                }
             }
             if (!url) {
                 try {
