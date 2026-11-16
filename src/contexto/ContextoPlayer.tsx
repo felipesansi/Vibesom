@@ -11,6 +11,7 @@ import React, {
 import { Alert } from 'react-native';
 import { Musica, pesquisar, resolverAudio, urlStreamCompleta } from '../lib/apiMusica';
 import { obterArquivoMusicaBaixada } from '../app/services/DownloadMusica';
+import { carregarFilaPersistida, salvarFilaPersistida } from '../app/services/PersistenciaFilaPlayer';
 
 
 type EstadoPlayer = 'parado' | 'carregando' | 'tocando' | 'pausado' | 'erro';
@@ -51,6 +52,7 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
     const tentouFallbackRef = useRef(false);
     const alternativasRef = useRef<Musica[]>([]);
     const indiceAlternativaRef = useRef(0);
+    const persistenciaCarregada = useRef(false);
 
     const player = useAudioPlayer(null);
     const status = useAudioPlayerStatus(player);
@@ -63,6 +65,31 @@ export function ProvedorPlayer({ children }: { children: React.ReactNode }) {
             interruptionMode: 'doNotMix',
         }).catch(e => console.warn('[Player] setAudioModeAsync falhou:', e));
     }, []);
+
+    // Restaura a fila local sem depender da API ou de URLs temporárias.
+    useEffect(() => {
+        let ativo = true;
+        carregarFilaPersistida().then(estadoSalvo => {
+            if (!ativo) return;
+            if (estadoSalvo) {
+                setLista(estadoSalvo.lista);
+                setIndiceAtual(estadoSalvo.indiceAtual);
+                setRepetir(estadoSalvo.repetir);
+                setAleatorio(estadoSalvo.aleatorio);
+            }
+            persistenciaCarregada.current = true;
+        }).catch(erro => {
+            console.warn('[Player] Falha ao restaurar fila:', erro);
+            persistenciaCarregada.current = true;
+        });
+        return () => { ativo = false; };
+    }, []);
+
+    // Salva fila e preferências localmente para sobreviver ao encerramento do app.
+    useEffect(() => {
+        if (!persistenciaCarregada.current) return;
+        void salvarFilaPersistida({ lista, indiceAtual, repetir, aleatorio });
+    }, [lista, indiceAtual, repetir, aleatorio]);
 
     // Sincroniza estado com status do player
     React.useEffect(() => {
