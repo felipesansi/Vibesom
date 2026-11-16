@@ -1,0 +1,37 @@
+name: Validar VibeSom
+
+on:
+  push:
+    branches:
+      - feat/player-hibrido-offline
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Verificar compatibilidade Expo
+        run: npx expo-doctor@latest
+
+      - name: Verificar TypeScript
+        run: npx tsc --noEmit
+
+      - name: Gerar bundle Android
+        run: npx expo export --platform android
